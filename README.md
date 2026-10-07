@@ -16,7 +16,7 @@ roles and permissions, and optional multi-tenancy, in one package.
 
 ## Requirements
 
-- PHP 8.1+ with `mbstring` and `intl`
+- PHP 8.2+ with `mbstring` and `intl`
 - CodeIgniter 4.5+
 - MySQL 5.7.7+ / MariaDB 10.2.2+ (or SQLite / PostgreSQL)
 

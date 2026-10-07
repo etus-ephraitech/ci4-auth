@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ## [0.9.0] - 2026-10-07
+## [0.9.1] - 2026-10-08
+
+### Changed
+- Minimum PHP version is now 8.2 (PHP 8.1 is end-of-life, and supported CodeIgniter releases require 8.2).
 
 ### Added
 - Package-owned `users` table, extensible through host migrations and `$userAllowedFields`, or a custom `UserModel`.
@@ -24,4 +28,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Events for registration, login, logout, failures, lockouts, password changes and token issue/revocation.
 
 [Unreleased]: https://github.com/etus-ephraitech/ci4-auth/compare/v0.9.0...HEAD
+[0.9.1]: https://github.com/etus-ephraitech/ci4-auth/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/etus-ephraitech/ci4-auth/releases/tag/v0.9.0
