@@ -6,6 +6,12 @@ namespace Ephraitech\Auth\Config;
 
 use CodeIgniter\Config\BaseConfig;
 use Ephraitech\Auth\Models\UserModel;
+use Ephraitech\Auth\Notifications\AfricasTalkingNotifier;
+use Ephraitech\Auth\Notifications\EmailNotifier;
+use Ephraitech\Auth\Notifications\NotifierInterface;
+use Ephraitech\Auth\Entities\OneTimeCode;
+use Ephraitech\Auth\Api\UserTransformer;
+use Ephraitech\Auth\Api\UserTransformerInterface;
 use LogicException;
 
 /**
@@ -50,16 +56,51 @@ class Auth extends BaseConfig
 
     public const USER_STATUSES = ['active', 'inactive', 'suspended', 'pending'];
 
-    private const REQUIRED_TABLE_KEYS = [
-        'users',
-        'identities',
-        'access_tokens',
-        'roles',
-        'permissions',
-        'role_permissions',
-        'user_roles',
-        'user_permissions',
-        'login_attempts',
+    // private const REQUIRED_TABLE_KEYS = [
+    //     'users',
+    //     'identities',
+    //     'access_tokens',
+    //     'roles',
+    //     'permissions',
+    //     'role_permissions',
+    //     'user_roles',
+    //     'user_permissions',
+    //     'login_attempts',
+    // ];
+
+    /**
+     * Default table names. Keys missing from a host's $tables override fall
+     * back to these, so new tables in minor releases never break upgrades.
+     */
+    private const DEFAULT_TABLES = [
+        'users'            => 'users',
+        'identities'       => 'auth_identities',
+        'access_tokens'    => 'auth_access_tokens',
+        'roles'            => 'auth_roles',
+        'permissions'      => 'auth_permissions',
+        'role_permissions' => 'auth_role_permissions',
+        'user_roles'       => 'auth_user_roles',
+        'user_permissions' => 'auth_user_permissions',
+        'login_attempts'   => 'auth_login_attempts',
+        'one_time_codes'   => 'auth_one_time_codes',
+    ];
+
+    private const DEFAULT_REDIRECTS = [
+        'login'         => '/login',
+        'afterLogin'    => '/',
+        'afterLogout'   => '/login',
+        'forbidden'     => '/',
+        'afterRegister' => '/',
+    ];
+
+    private const DEFAULT_VIEWS = [
+        'login'           => 'Ephraitech\Auth\Views\login',
+        'register'        => 'Ephraitech\Auth\Views\register',
+        'forgot'          => 'Ephraitech\Auth\Views\forgot',
+        'reset'           => 'Ephraitech\Auth\Views\reset',
+        'verify'          => 'Ephraitech\Auth\Views\verify',
+        'change_password' => 'Ephraitech\Auth\Views\change_password',
+        'messages'        => 'Ephraitech\Auth\Views\_messages',
     ];
 
     // ------------------------------------------------------------------
@@ -86,7 +127,44 @@ class Auth extends BaseConfig
         'user_roles'       => 'auth_user_roles',
         'user_permissions' => 'auth_user_permissions',
         'login_attempts'   => 'auth_login_attempts',
+        'one_time_codes'   => 'auth_one_time_codes',
     ];
+
+    /**
+     * Resolve a redirect target, falling back to the default.
+     */
+    public function redirect(string $key): string
+    {
+        $target = $this->redirects[$key] ?? self::DEFAULT_REDIRECTS[$key] ?? null;
+
+        if (! is_string($target) || $target === '') {
+            throw new LogicException("Ephraitech Auth: no redirect configured for '{$key}'.");
+        }
+
+        return $target;
+    }
+
+    /**
+     * Resolve a view name, falling back to the package view.
+     */
+    public function view(string $key): string
+    {
+        $view = $this->views[$key] ?? self::DEFAULT_VIEWS[$key] ?? null;
+
+        if (! is_string($view) || $view === '') {
+            throw new LogicException("Ephraitech Auth: no view configured for '{$key}'.");
+        }
+
+        return $view;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function viewKeys(): array
+    {
+        return array_keys(self::DEFAULT_VIEWS);
+    }
 
     // ------------------------------------------------------------------
     // Users
@@ -341,6 +419,96 @@ class Auth extends BaseConfig
     public int $loginAttemptRetentionDays = 90;
 
     // ------------------------------------------------------------------
+    // One-time codes (password reset, identifier verification)
+    // ------------------------------------------------------------------
+
+    /**
+     * Digits in a code sent by email or SMS.
+     */
+    public int $otpLength = 6;
+
+    /**
+     * Seconds a code stays valid (default 15 minutes).
+     */
+    public int $otpLifetime = 900;
+
+    /**
+     * Wrong guesses allowed per code before it stops working.
+     */
+    public int $otpMaxAttempts = 5;
+
+    /**
+     * Minimum seconds between codes sent to the same identifier for the
+     * same purpose (protects SMS credit and inboxes from abuse).
+     */
+    public int $otpResendInterval = 60;
+
+    /**
+     * Days to keep used or expired codes before auth:prune deletes them.
+     */
+    public int $otpRetentionDays = 7;
+
+    /**
+     * Switch 'pending' users to 'active' when they verify an identifier.
+     * Use with registration status 'pending' for verify-before-use signups;
+     * leave false when 'pending' means "awaiting admin approval".
+     */
+    public bool $activateOnVerification = false;
+
+        // ------------------------------------------------------------------
+    // Delivery of one-time codes
+    // ------------------------------------------------------------------
+
+    /**
+     * Notifier class per channel; NULL disables that channel. Each class
+     * implements NotifierInterface and accepts this config in its constructor.
+     *
+     *   'email' => EmailNotifier::class          CodeIgniter Email (Config\Email)
+     *   'sms'   => AfricasTalkingNotifier::class  Africa's Talking (set credentials below)
+     *   either  => LogNotifier::class            writes codes to the log (development only)
+     *
+     * @var array<string, class-string<NotifierInterface>|null>
+     */
+    public array $notifiers = [
+        OneTimeCode::CHANNEL_EMAIL => EmailNotifier::class,
+        OneTimeCode::CHANNEL_SMS   => null,
+    ];
+
+    /**
+     * Sender for auth emails; empty uses Config\Email::$fromEmail / $fromName.
+     */
+    public string $emailFromAddress = '';
+
+    public string $emailFromName = '';
+
+    /**
+     * Product name shown in emails and SMS, e.g. "Field Tracker".
+     * Empty omits it.
+     */
+    public string $appName = '';
+
+    /**
+     * Africa's Talking credentials (AfricasTalkingNotifier). Set them in
+     * .env, never in committed config:
+     *   auth.africasTalkingUsername = yourusername
+     *   auth.africasTalkingApiKey   = atsk_...
+     */
+    public string $africasTalkingUsername = '';
+
+    public string $africasTalkingApiKey = '';
+
+    /**
+     * Registered alphanumeric sender ID or short code; empty uses the
+     * account default.
+     */
+    public string $africasTalkingSenderId = '';
+
+    /**
+     * Use the sandbox endpoint (username must be "sandbox").
+     */
+    public bool $africasTalkingSandbox = false;
+
+    // ------------------------------------------------------------------
     // Tenancy
     // ------------------------------------------------------------------
 
@@ -428,22 +596,93 @@ class Auth extends BaseConfig
         'afterLogin'  => '/',
         'afterLogout' => '/login',
         'forbidden'   => '/',
+        'afterRegister' => '/',
     ];
+
+        // ------------------------------------------------------------------
+    // Web pages (login, register, password reset, verification)
+    // ------------------------------------------------------------------
+
+    /**
+     * Allow self-registration (web page and API endpoint). Turn off for
+     * invite-only systems; accounts are then created by admins or CLI.
+     */
+    public bool $allowRegistration = true;
+
+    /**
+     * Extra user columns collected on the registration form, as
+     * column => label. Each must be registered in $userAllowedFields.
+     *
+     * @var array<string, string>
+     */
+    public array $registrationFields = [];
+
+    /**
+     * Layout the auth pages render inside. Point it at your app's layout
+     * so the pages pick up your header, branding and CSS.
+     */
+    public string $viewLayout = 'Ephraitech\Auth\Views\layout';
+
+    /**
+     * Section name the layout renders: <?= $this->renderSection('content') ?>
+     */
+    public string $viewSection = 'content';
+
+    /**
+     * Per-page view overrides, merged over the package defaults. Keys:
+     * login, register, forgot, reset, verify, change_password, messages.
+     *
+     * @var array<string, string>
+     */
+    public array $views = [];
+
+        // ------------------------------------------------------------------
+    // API endpoints
+    // ------------------------------------------------------------------
+
+    /**
+     * Builds the "user" object in API responses. Replace with your own
+     * class (implementing UserTransformerInterface, constructor accepting
+     * this config) to match a project's response conventions.
+     *
+     * @var class-string<UserTransformerInterface>
+     */
+    public string $apiUserTransformer = UserTransformer::class;
+
+    /**
+     * Token name used when a client doesn't send device_name.
+     */
+    public string $apiDefaultDeviceName = 'API client';
+
+    /**
+     * Optional link in emailed reset codes for API/mobile clients, with
+     * {selector} and {code} placeholders, e.g. a deep link:
+     *   'fieldtracker://reset-password?s={selector}&c={code}'
+     * NULL sends the code only.
+     */
+    public ?string $apiResetLink = null;
+
+    /**
+     * Same as $apiResetLink, for emailed verification codes.
+     */
+    public ?string $apiVerifyLink = null;
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
     /**
-     * Resolve a configured table name by key.
+     * Resolve a configured table name by key, falling back to the default.
      */
     public function table(string $key): string
     {
-        if (! isset($this->tables[$key]) || $this->tables[$key] === '') {
+        $name = $this->tables[$key] ?? self::DEFAULT_TABLES[$key] ?? null;
+
+        if (! is_string($name) || $name === '') {
             throw new LogicException("Ephraitech Auth: no table configured for key '{$key}'.");
         }
 
-        return $this->tables[$key];
+        return $name;
     }
 
     public function isIdentifierEnabled(string $type): bool
@@ -487,15 +726,19 @@ class Auth extends BaseConfig
         $this->assertThrottling();
         $this->assertTenancy();
         $this->assertAuthorization();
+        $this->assertOneTimeCodes();
+        $this->assertNotifiers();
+        $this->assertWeb();
+        $this->assertApi();
     }
 
     private function assertTables(): void
     {
-        foreach (self::REQUIRED_TABLE_KEYS as $key) {
-            $this->table($key);
-        }
+        $names = [];
 
-        $names = array_values($this->tables);
+        foreach (array_keys(self::DEFAULT_TABLES) as $key) {
+            $names[] = $this->table($key);
+        }
 
         if (count($names) !== count(array_unique($names))) {
             $this->fail('$tables contains duplicate table names.');
@@ -742,6 +985,109 @@ class Auth extends BaseConfig
         }
     }
 
+    private function assertOneTimeCodes(): void
+    {
+        if ($this->otpLength < 4 || $this->otpLength > 10) {
+            $this->fail('$otpLength must be between 4 and 10 digits.');
+        }
+
+        if ($this->otpLifetime < 60 || $this->otpLifetime > 86_400) {
+            $this->fail('$otpLifetime must be between 60 seconds and 24 hours.');
+        }
+
+        if ($this->otpMaxAttempts < 1) {
+            $this->fail('$otpMaxAttempts must be at least 1.');
+        }
+
+        if ($this->otpResendInterval < 0) {
+            $this->fail('$otpResendInterval cannot be negative.');
+        }
+
+        if ($this->otpRetentionDays < 1) {
+            $this->fail('$otpRetentionDays must be at least 1.');
+        }
+    }
+
+    private function assertNotifiers(): void
+    {
+        $channels = [OneTimeCode::CHANNEL_EMAIL, OneTimeCode::CHANNEL_SMS];
+
+        foreach ($this->notifiers as $channel => $class) {
+            if (! in_array($channel, $channels, true)) {
+                $this->fail("Unknown notifier channel '{$channel}'. Use: " . implode(', ', $channels) . '.');
+            }
+
+            if ($class === null) {
+                continue;
+            }
+
+            if (! is_string($class) || ! class_exists($class) || ! is_subclass_of($class, NotifierInterface::class)) {
+                $this->fail("Notifier for '{$channel}' must be a class implementing " . NotifierInterface::class . '.');
+            }
+
+            if (
+                $class === AfricasTalkingNotifier::class
+                && ($this->africasTalkingUsername === '' || $this->africasTalkingApiKey === '')
+            ) {
+                $this->fail(
+                    'AfricasTalkingNotifier needs $africasTalkingUsername and $africasTalkingApiKey '
+                        . '(set auth.africasTalkingUsername and auth.africasTalkingApiKey in .env).'
+                );
+            }
+        }
+
+        if ($this->emailFromAddress !== '' && filter_var($this->emailFromAddress, FILTER_VALIDATE_EMAIL) === false) {
+            $this->fail('$emailFromAddress is not a valid email address.');
+        }
+
+        if ($this->africasTalkingSandbox && $this->africasTalkingUsername !== '' && $this->africasTalkingUsername !== 'sandbox') {
+            $this->fail("Africa's Talking sandbox mode requires \$africasTalkingUsername = 'sandbox'.");
+        }
+    }
+
+    private function assertWeb(): void
+    {
+        if ($this->viewLayout === '' || $this->viewSection === '') {
+            $this->fail('$viewLayout and $viewSection cannot be empty.');
+        }
+
+        foreach (array_keys($this->views) as $key) {
+            if (! array_key_exists($key, self::DEFAULT_VIEWS)) {
+                $this->fail("Unknown view key '{$key}'. Use: " . implode(', ', array_keys(self::DEFAULT_VIEWS)) . '.');
+            }
+        }
+
+        foreach ($this->registrationFields as $column => $label) {
+            if (! is_string($column) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1 || ! is_string($label) || $label === '') {
+                $this->fail('$registrationFields must map column names to non-empty labels.');
+            }
+
+            if (in_array($column, array_merge(self::SUPPORTED_IDENTIFIERS, ['password', 'password_confirm']), true)) {
+                $this->fail("'{$column}' is reserved and cannot be a registration field.");
+            }
+        }
+    }
+
+    private function assertApi(): void
+    {
+        if (
+            ! class_exists($this->apiUserTransformer)
+            || ! is_subclass_of($this->apiUserTransformer, UserTransformerInterface::class)
+        ) {
+            $this->fail('$apiUserTransformer must be a class implementing ' . UserTransformerInterface::class . '.');
+        }
+
+        if (trim($this->apiDefaultDeviceName) === '' || mb_strlen($this->apiDefaultDeviceName, 'UTF-8') > 100) {
+            $this->fail('$apiDefaultDeviceName must be between 1 and 100 characters.');
+        }
+
+        foreach (['apiResetLink' => $this->apiResetLink, 'apiVerifyLink' => $this->apiVerifyLink] as $name => $template) {
+            if ($template !== null && (! str_contains($template, '{selector}') || ! str_contains($template, '{code}'))) {
+                $this->fail("\${$name} must contain both {selector} and {code} placeholders.");
+            }
+        }
+    }
+    
     /**
      * @throws LogicException
      */

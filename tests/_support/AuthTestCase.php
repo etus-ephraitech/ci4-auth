@@ -13,6 +13,7 @@ use Ephraitech\Auth\Authorization\RbacSynchronizer;
 use Ephraitech\Auth\Config\Auth;
 use Ephraitech\Auth\Entities\User;
 
+
 /**
  * Base for tests needing the database. Each test gets freshly migrated
  * tables and RBAC synced from the default config.
@@ -46,11 +47,20 @@ abstract class AuthTestCase extends CIUnitTestCase
         /** @var Auth $config */
         $config           = config(Auth::class);
         $this->authConfig = $config;
-        
-        // Minimum bcrypt cost: identical behaviour, a fraction of the time.
-        $this->authConfig->hashOptions = ['cost' => 4];
+
+        /** @var Auth $config */
+        $config           = config(Auth::class);
+        $this->authConfig = $config;
+
+        CapturingNotifier::reset();
+        $this->authConfig->notifiers = ['email' => CapturingNotifier::class, 'sms' => CapturingNotifier::class];
 
         RbacSynchronizer::create($this->authConfig)->sync();
+        
+        // // Minimum bcrypt cost: identical behaviour, a fraction of the time.
+        // $this->authConfig->hashOptions = ['cost' => 4];
+
+        // RbacSynchronizer::create($this->authConfig)->sync();
     }
 
     protected function tearDown(): void
@@ -96,5 +106,31 @@ abstract class AuthTestCase extends CIUnitTestCase
         Services::injectMock('request', $request);
 
         return $request;
+    }
+
+    /**
+     * Enable email + phone, with email required.
+     */
+    protected function enablePhone(): void
+    {
+        $this->authConfig->identifiers         = ['email', 'phone'];
+        $this->authConfig->loginIdentifiers    = ['email', 'phone'];
+        $this->authConfig->requiredIdentifiers = ['email'];
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    protected function createUserWithPhone(
+        string $email = 'jane@example.com',
+        string $phone = '+256772123456',
+        array $options = [],
+    ): User {
+        return service('authRegistrar')->register(
+            ['email' => $email, 'phone' => $phone],
+            self::PASSWORD,
+            [],
+            array_merge(['roles' => ['user']], $options)
+        );
     }
 }

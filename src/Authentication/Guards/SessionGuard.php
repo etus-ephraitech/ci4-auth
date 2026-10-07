@@ -159,6 +159,33 @@ final class SessionGuard implements GuardInterface
         }
     }
 
+    /**
+     * Re-stamp the current session after the user changed their own
+     * password, so this browser stays signed in while every other session
+     * (with the old fingerprint) is signed out. Regenerates the session ID.
+     */
+    public function refresh(): void
+    {
+        $user = $this->user();
+
+        if ($user === null) {
+            return;
+        }
+
+        $data = $this->session->get($this->config->sessionKey);
+
+        if (! is_array($data)) {
+            return;
+        }
+
+        $this->session->regenerate(true);
+
+        $data['password_fingerprint'] = $this->fingerprint((int) $user->id);
+        $data['last_activity']        = time();
+
+        $this->session->set($this->config->sessionKey, $data);
+    }
+
     // ------------------------------------------------------------------
 
     private function resolveFromSession(): ?User

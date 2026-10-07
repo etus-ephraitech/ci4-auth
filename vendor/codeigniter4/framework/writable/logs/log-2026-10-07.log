@@ -1,0 +1,12 @@
+CRITICAL - 2026-10-07 23:31:17 --> ErrorException: strict_types declaration must be the very first statement in the script
+[Method: GET, Route: /]
+in /var/www/projects/packages/ci4-auth/src/Flows/PasswordResetFlow.php on line 3.
+ 1 [internal function]: CodeIgniter\Debug\Exceptions->shutdownHandler()
+CRITICAL - 2026-10-07 23:34:08 --> ErrorException: strict_types declaration must be the very first statement in the script
+[Method: GET, Route: /]
+in /var/www/projects/packages/ci4-auth/src/Flows/PasswordResetFlow.php on line 2.
+ 1 [internal function]: CodeIgniter\Debug\Exceptions->shutdownHandler()
+ERROR - 2026-10-07 23:34:53 --> Ephraitech Auth: password reset code for user 1 not delivered: Delivery over 'email' failed: simulated failure
+ERROR - 2026-10-07 23:44:08 --> Ephraitech Auth: password reset code for user 1 not delivered: Delivery over 'email' failed: simulated failure
+ERROR - 2026-10-07 23:54:46 --> Ephraitech Auth: password reset code for user 1 not delivered: Delivery over 'email' failed: simulated failure
+ERROR - 2026-10-07 23:56:49 --> Ephraitech Auth: password reset code for user 1 not delivered: Delivery over 'email' failed: simulated failure

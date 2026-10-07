@@ -36,9 +36,10 @@ class AuthPublish extends BaseCommand
     protected $group       = 'Ephraitech Auth';
     protected $name        = 'auth:publish';
     protected $description = 'Creates app/Config/Auth.php to customise Ephraitech Auth.';
-    protected $usage       = 'auth:publish [--force]';
-    protected $options     = [
-        '--force' => 'Overwrite an existing app/Config/Auth.php.',
+    protected $usage   = 'auth:publish [--views] [--force]';
+    protected $options = [
+        '--views' => 'Copy the auth page views into app/Views/auth/ instead of publishing config.',
+        '--force' => 'Overwrite existing files.',
     ];
 
     /**
@@ -47,6 +48,10 @@ class AuthPublish extends BaseCommand
     public function run(array $params)
     {
         $path = APPPATH . 'Config' . DIRECTORY_SEPARATOR . 'Auth.php';
+
+        if ($this->hasOption($params, 'views')) {
+            return $this->publishViews($this->hasOption($params, 'force'));
+        }
 
         if (is_file($path) && ! $this->hasOption($params, 'force')) {
             CLI::error('app/Config/Auth.php already exists. Use --force to overwrite it.');
@@ -124,5 +129,51 @@ class AuthPublish extends BaseCommand
         }
 
         return "[\n" . implode("\n", $lines) . "\n" . $close . ']';
+    }
+
+    private function publishViews(bool $force): int
+    {
+        $source      = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Views';
+        $destination = APPPATH . 'Views' . DIRECTORY_SEPARATOR . 'auth';
+
+        if (! is_dir($destination) && ! mkdir($destination, 0755, true) && ! is_dir($destination)) {
+            CLI::error("Could not create {$destination}.");
+
+            return EXIT_ERROR;
+        }
+
+        $files = glob($source . DIRECTORY_SEPARATOR . '*.php') ?: [];
+
+        foreach ($files as $file) {
+            $target = $destination . DIRECTORY_SEPARATOR . basename($file);
+
+            if (is_file($target) && ! $force) {
+                CLI::write('Skipped (exists): app/Views/auth/' . basename($file), 'yellow');
+
+                continue;
+            }
+
+            if (! copy($file, $target)) {
+                CLI::error('Could not copy ' . basename($file) . '.');
+
+                return EXIT_ERROR;
+            }
+
+            CLI::write('Copied: app/Views/auth/' . basename($file), 'green');
+        }
+
+        CLI::newLine();
+        CLI::write('Now point Config\Auth at the copies:', 'yellow');
+        CLI::write("    public string \$viewLayout = 'auth/layout';   // or your own layout");
+        CLI::write('    public array $views = [');
+
+        foreach (BaseAuth::viewKeys() as $key) {
+            $file = $key === 'messages' ? '_messages' : $key;
+            CLI::write("        '{$key}' => 'auth/{$file}',");
+        }
+
+        CLI::write('    ];');
+
+        return EXIT_SUCCESS;
     }
 }

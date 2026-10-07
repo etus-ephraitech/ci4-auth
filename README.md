@@ -13,6 +13,7 @@ roles and permissions, and optional multi-tenancy, in one package.
 - **Roles and permissions:** wildcards (`users.*`), a super role, direct grants, and config-driven sync.
 - **Multi-tenancy:** roles, grants and tokens can be scoped per tenant, with global roles for platform admins.
 - **Secure by default:** timing-safe login failures, login throttling, session-fixation protection, password-change logout across devices, and open-redirect protection.
+- **Ready-made flows:** login, registration, forgot/reset password, email/phone verification and change password, as Bootstrap 5 pages and as JSON endpoints, both optional and replaceable.
 
 ## Requirements
 
@@ -111,6 +112,103 @@ $routes->group('api', ['filter' => ['auth:token', 'tenant']], static function ($
 });
 ```
 
+## Built-in pages and endpoints
+
+Register either or both in `app/Config/Routes.php`:
+
+```php
+service('auth')->routes($routes);       // web pages: /login, /register, /forgot-password, ...
+service('auth')->apiRoutes($routes);    // JSON: /api/auth/login, /api/auth/me, ...
+
+// Options:
+service('auth')->routes($routes, except: ['register'], prefix: 'account');
+service('auth')->apiRoutes($routes, prefix: 'v1/auth');
+```
+
+Exclude API routes from CSRF in `app/Config/Filters.php`:
+
+```php
+'csrf' => ['except' => ['api/*']],
+```
+
+### Web pages
+
+| Page | Route name |
+|---|---|
+| Sign in | `auth.login` |
+| Sign out (POST) | `auth.logout` |
+| Create account | `auth.register` |
+| Forgot / reset password | `auth.forgot`, `auth.reset` |
+| Verify email or phone | `auth.verify` |
+| Change password | `auth.password` |
+
+Render them inside your own layout, and override any single page:
+
+```php
+public string $viewLayout  = 'layouts/main';   // must render the section below
+public string $viewSection = 'content';
+public array  $views       = ['login' => 'pages/custom_login'];
+public array  $registrationFields = ['first_name' => 'First name'];
+```
+
+`php spark auth:publish --views` copies every page into `app/Views/auth/` for full control.
+
+### API endpoints
+
+| Method | Path | Auth |
+|---|---|---|
+| POST | `login` | |
+| POST | `logout`, `logout-all` | token |
+| GET | `me` | token |
+| POST | `register` | |
+| POST | `password/forgot`, `password/reset` | |
+| POST | `password/change` | token |
+| POST | `verify/send`, `verify/confirm` | |
+
+Errors share one shape:
+
+```json
+{ "status": 422, "error": "validation_failed", "message": "...", "errors": { "password": "..." } }
+```
+
+A login that needs verification returns `403` with `"error": "verification_required"`, the identifier type, a masked destination and whether a code was sent. The client confirms with `verify/confirm` (login + code), then logs in again.
+
+To match a project's response conventions, implement `UserTransformerInterface` and set `$apiUserTransformer`.
+
+## Codes by email and SMS
+
+Password reset and verification send short-lived numeric codes. Configure delivery per channel:
+
+```php
+use Ephraitech\Auth\Notifications\AfricasTalkingNotifier;
+use Ephraitech\Auth\Notifications\EmailNotifier;
+
+public string $appName = 'Field Tracker';
+public string $emailFromAddress = 'no-reply@example.com';
+
+public array $notifiers = [
+    'email' => EmailNotifier::class,           // uses Config\Email
+    'sms'   => AfricasTalkingNotifier::class,  // or null to disable
+];
+```
+
+Africa's Talking credentials belong in `.env`:
+
+```
+auth.africasTalkingUsername = yourusername
+auth.africasTalkingApiKey   = atsk_...
+auth.africasTalkingSenderId = YOURBRAND
+```
+
+Use `LogNotifier::class` during development to write codes to `writable/logs/` instead of sending them. It refuses to run in production. For another SMS gateway, implement `NotifierInterface` (a single `send()` method).
+
+To require verification before sign-in, or to activate pending accounts on verification:
+
+```php
+public array $requireVerifiedToLogin = ['email' => true, 'phone' => false, 'username' => false];
+public bool  $activateOnVerification = true;   // with registration status 'pending'
+```
+
 | Filter | Meaning |
 |---|---|
 | `auth`, `auth:session`, `auth:token` | Signed in (either guard, or a specific one) |
@@ -180,6 +278,7 @@ Events::on(AuthEvents::REGISTERED, static function ($user) {
 
 Available events: `REGISTERED`, `LOGIN`, `LOGIN_FAILED`, `LOCKED_OUT`, `LOGOUT`, `PASSWORD_CHANGED`, `TOKEN_ISSUED`, `TOKENS_REVOKED`. All fire after the related database work commits.
 
+
 ## CLI
 
 | Command | Purpose |
@@ -198,6 +297,7 @@ Users can be referenced by ID, UUID, email, username or phone.
 - Add CodeIgniter's `Throttler` filter to login routes for per-IP rate limiting. The built-in throttle works per identifier and IP.
 - Use HTTPS: bearer tokens and session cookies are credentials.
 - Run `php spark auth:prune` daily from cron.
+- Add CodeIgniter's `Throttler` to `register`, `forgot-password`, `verify/resend` and their API equivalents, so your forms can't be used to spam inboxes or spend SMS credit.
 
 ## Testing
 

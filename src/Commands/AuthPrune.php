@@ -15,7 +15,7 @@ class AuthPrune extends BaseCommand
 
     protected $group       = 'Ephraitech Auth';
     protected $name        = 'auth:prune';
-    protected $description = 'Deletes stale tokens and old login attempts. Safe to run daily from cron.';
+    protected $description = 'Deletes stale tokens, old login attempts and expired one-time codes. Safe to run daily from cron.';
     protected $usage       = 'auth:prune [--tokens-days=7]';
     protected $options     = [
         '--tokens-days' => 'Delete tokens revoked/expired more than N days ago (default 7).',
@@ -34,17 +34,32 @@ class AuthPrune extends BaseCommand
             return EXIT_ERROR;
         }
 
+        // try {
+        //     $tokens   = service('authTokens')->pruneStale((int) $days);
+        //     $attempts = service('authThrottle')->prune();
+        // } catch (Throwable $e) {
+        //     CLI::error('Prune failed: ' . $e->getMessage());
+
+        //     return EXIT_ERROR;
+        // }
+
+        // CLI::write("Deleted {$tokens} stale token(s) and {$attempts} old login attempt(s).", 'green');
+
+
         try {
             $tokens   = service('authTokens')->pruneStale((int) $days);
             $attempts = service('authThrottle')->prune();
+            $codes    = service('authOneTimeCodes')->prune();
         } catch (Throwable $e) {
             CLI::error('Prune failed: ' . $e->getMessage());
 
             return EXIT_ERROR;
         }
 
-        CLI::write("Deleted {$tokens} stale token(s) and {$attempts} old login attempt(s).", 'green');
-
+        CLI::write(
+            "Deleted {$tokens} stale token(s), {$attempts} old login attempt(s) and {$codes} expired code(s).",
+            'green'
+        );
         return EXIT_SUCCESS;
     }
 }

@@ -33,6 +33,9 @@ final class AuthEvents
     /** Payload: User $user */
     public const PASSWORD_CHANGED = 'ephraitech.auth.password_changed';
 
+    /** Payload: User $user, string $identifierType ('email'|'phone') */
+    public const IDENTIFIER_VERIFIED = 'ephraitech.auth.identifier_verified';
+
     /** Payload: int $userId, int $tokenId, string $type ('session'|'api_key') */
     public const TOKEN_ISSUED = 'ephraitech.auth.token_issued';
 

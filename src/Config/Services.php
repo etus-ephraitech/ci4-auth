@@ -25,6 +25,12 @@ use Ephraitech\Auth\Passwords\PasswordPolicy;
 use Ephraitech\Auth\Models\AccessTokenModel;
 use Ephraitech\Auth\Registration\UserRegistrar;
 use Ephraitech\Auth\Tokens\TokenManager;
+use Ephraitech\Auth\Models\OneTimeCodeModel;
+use Ephraitech\Auth\Notifications\NotifierRegistry;
+use Ephraitech\Auth\OneTimeCodes\OneTimeCodeManager;
+use Ephraitech\Auth\Flows\DeliveryTargetResolver;
+use Ephraitech\Auth\Flows\PasswordResetFlow;
+use Ephraitech\Auth\Flows\VerificationFlow;
 
 /**
  * Service definitions, auto-discovered by CodeIgniter (Config\Modules
@@ -39,8 +45,13 @@ use Ephraitech\Auth\Tokens\TokenManager;
  *   service('authCredentials')      CredentialVerifier
  *   service('authThrottle')         LoginThrottle
  *   service('authRegistrar')        UserRegistrar
+ *   service('authPasswordReset')    PasswordResetFlow
+ *   service('authVerification')     VerificationFlow
  *
  * All names are prefixed to avoid colliding with other packages.
+ * 
+ *  service('authOneTimeCodes')     OneTimeCodeManager
+ *  service('authNotifiers')        NotifierRegistry
  */
 class Services extends BaseService
 {
@@ -183,6 +194,67 @@ class Services extends BaseService
             self::packageModel(IdentityModel::class),
             service('authPasswords'),
             service('authAuthorizer'),
+        );
+    }
+
+
+    public static function authOneTimeCodes(bool $getShared = true): OneTimeCodeManager
+    {
+        if ($getShared) {
+            return static::getSharedInstance('authOneTimeCodes');
+        }
+
+        return new OneTimeCodeManager(self::authConfig(), self::packageModel(OneTimeCodeModel::class));
+    }
+
+    public static function authNotifiers(bool $getShared = true): NotifierRegistry
+    {
+        if ($getShared) {
+            return static::getSharedInstance('authNotifiers');
+        }
+
+        return new NotifierRegistry(self::authConfig());
+    }
+
+    public static function authPasswordReset(bool $getShared = true): PasswordResetFlow
+    {
+        if ($getShared) {
+            return static::getSharedInstance('authPasswordReset');
+        }
+
+        $config     = self::authConfig();
+        $users      = self::userModel($config);
+        $identities = self::packageModel(IdentityModel::class);
+
+        return new PasswordResetFlow(
+            $config,
+            $users,
+            $identities,
+            new DeliveryTargetResolver($config, $users, $identities),
+            service('authOneTimeCodes'),
+            service('authNotifiers'),
+            service('authPasswords'),
+            service('authPasswordChanger'),
+        );
+    }
+
+    public static function authVerification(bool $getShared = true): VerificationFlow
+    {
+        if ($getShared) {
+            return static::getSharedInstance('authVerification');
+        }
+
+        $config     = self::authConfig();
+        $users      = self::userModel($config);
+        $identities = self::packageModel(IdentityModel::class);
+
+        return new VerificationFlow(
+            $config,
+            $users,
+            $identities,
+            new DeliveryTargetResolver($config, $users, $identities),
+            service('authOneTimeCodes'),
+            service('authNotifiers'),
         );
     }
 

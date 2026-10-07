@@ -14,6 +14,8 @@ use Ephraitech\Auth\Authorization\TenantContext;
 use Ephraitech\Auth\Config\Auth;
 use Ephraitech\Auth\Entities\User;
 use Ephraitech\Auth\Exceptions\AuthException;
+use CodeIgniter\Router\RouteCollection;
+use Ephraitech\Auth\Routing\AuthRoutes;
 
 /**
  * The single entry point apps use: service('auth').
@@ -203,6 +205,34 @@ final class AuthManager
     public function config(): Auth
     {
         return $this->config;
+    }
+
+    /**
+     * Register the package's web pages in app/Config/Routes.php:
+     *
+     *     service('auth')->routes($routes);
+     *     service('auth')->routes($routes, except: ['register'], prefix: 'account');
+     *
+     * @param list<string> $except Groups to skip: login, logout, register,
+     *                             forgot, reset, verify, password.
+     */
+    public function routes(RouteCollection $routes, array $except = [], string $prefix = ''): void
+    {
+        AuthRoutes::web($routes, $this->config, $except, $prefix);
+    }
+
+    /**
+     * Register the package's JSON endpoints in app/Config/Routes.php:
+     *
+     *     service('auth')->apiRoutes($routes);                      // /api/auth/...
+     *     service('auth')->apiRoutes($routes, prefix: 'v1/auth', except: ['register']);
+     *
+     * @param list<string> $except Groups to skip: login, logout, me,
+     *                             register, password, change, verify.
+     */
+    public function apiRoutes(RouteCollection $routes, array $except = [], string $prefix = 'api/auth'): void
+    {
+        AuthRoutes::api($routes, $this->config, $except, $prefix);
     }
 
     // ------------------------------------------------------------------
