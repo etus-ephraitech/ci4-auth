@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/codeigniter4/framework/system/Test/bootstrap.php"
+         colors="true"
+         cacheDirectory="build/.phpunit.cache"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="Ephraitech Auth">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+    </source>
+
+    <php>
+        <env name="CI_ENVIRONMENT" value="testing"/>
+        <server name="app.baseURL" value="http://example.com/"/>
+        <env name="database.tests.DBDriver" value="SQLite3"/>
+        <env name="database.tests.database" value=":memory:"/>
+        <env name="database.tests.foreignKeys" value="true"/>
+    </php>
+</phpunit>

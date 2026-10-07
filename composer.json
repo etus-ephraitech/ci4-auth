@@ -1,0 +1,56 @@
+{
+  "name": "ephraitech/ci4-auth",
+  "description": "DB-backed authentication (session + opaque token) and role/permission authorization for CodeIgniter 4, with multi-tenant support.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "codeigniter4",
+    "ci4",
+    "authentication",
+    "authorization",
+    "rbac",
+    "tokens",
+    "api"
+  ],
+  "homepage": "https://github.com/etus-ephraitech/ci4-auth",
+  "authors": [
+    {
+      "name": "Ephraitech Unified Solutions",
+      "homepage": "https://github.com/etus-ephraitech"
+    }
+  ],
+  "require": {
+    "php": "^8.1",
+    "ext-mbstring": "*"
+  },
+  "support": {
+    "issues": "https://github.com/etus-ephraitech/ci4-auth/issues",
+    "source": "https://github.com/etus-ephraitech/ci4-auth"
+  },
+  "require-dev": {
+    "codeigniter4/framework": "^4.5",
+    "phpunit/phpunit": "^10.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "Ephraitech\\Auth\\": "src/"
+    },
+    "files": [
+      "src/Helpers/auth_helper.php"
+    ]
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Ephraitech\\Auth\\Tests\\Support\\": "tests/_support/",
+      "Ephraitech\\Auth\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
