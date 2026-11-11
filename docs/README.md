@@ -151,7 +151,14 @@ A guard answers "who is making this request?".
 
 `service('auth')` chooses automatically: the token guard when the request carries a bearer token, otherwise the session guard. Route filters can force one (`auth:session`, `auth:token`). Guards are created lazily, so API requests never start a PHP session.
 
-&#91;embedded content: request authentication · 2 guards, 1 permission check\]
+```mermaid
+flowchart LR
+    R["Request<br/>route filter or auth() call"] --> D{"Bearer token?"}
+    D -- yes --> T["Token guard<br/>hash token, find its row<br/>reject revoked or expired<br/>owner must be active"]
+    D -- no --> S["Session guard<br/>read the PHP session<br/>idle timeout, owner active<br/>password unchanged since login"]
+    T --> P["Permission check<br/>user roles and grants<br/>within token abilities<br/>in the active tenant"]
+    S --> P
+```
 
 A bearer token selects the token guard; anything else uses the session guard. Both end in the same permission check, where token abilities and the active tenant narrow what the user's roles allow.
 
