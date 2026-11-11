@@ -26,9 +26,12 @@ final class AfricasTalkingNotifier implements NotifierInterface
     private const SANDBOX_URL = 'https://api.sandbox.africastalking.com/version1/messaging';
 
     /**
-     * Africa's Talking per-recipient status code for an accepted message.
+     * Africa's Talking per-recipient status codes for an accepted message:
+     * 100 Processed, 101 Sent, 102 Queued. All are reported as "Success";
+     * codes from 401 up (RiskHold, InvalidSenderId, InvalidPhoneNumber,
+     * InsufficientBalance, ...) are failures.
      */
-    private const STATUS_SUCCESS = 101;
+    private const ACCEPTED_CODES = [100, 101, 102];
 
     public function __construct(private readonly Auth $config) {}
 
@@ -74,7 +77,7 @@ final class AfricasTalkingNotifier implements NotifierInterface
 
         $recipient = $body['SMSMessageData']['Recipients'][0] ?? null;
 
-        if (! is_array($recipient) || (int) ($recipient['statusCode'] ?? 0) !== self::STATUS_SUCCESS) {
+        if (! is_array($recipient) || ! in_array((int) ($recipient['statusCode'] ?? 0), self::ACCEPTED_CODES, true)) {
             $reason = is_array($recipient)
                 ? (string) ($recipient['status'] ?? 'unknown status')
                 : (string) ($body['SMSMessageData']['Message'] ?? 'no recipients accepted');

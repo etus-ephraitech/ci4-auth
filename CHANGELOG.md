@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.10.2] - 2026-11-12
+
+### Fixed
+- `AfricasTalkingNotifier` reported messages as failed ("Delivery over 'sms' failed: Success") when Africa's Talking accepted them with status code 100 (Processed) or 102 (Queued); only 101 (Sent) was accepted. All three now count as accepted. The code had been delivered, but callers treated it as unsent.
 ## [0.10.0] - 2026-10-08
 
 ### Added
