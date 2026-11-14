@@ -6,10 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-11-14
+
+### Fixed
+- The package ignored the app's `Config\Auth` on CodeIgniter 4.4 and later: `config(\Ephraitech\Auth\Config\Auth::class)` returns exactly the package class, so fresh installs ran on the package defaults (its 3 roles instead of the app's, unknown user columns). Every lookup now goes through `ConfigResolver::resolve()`, which prefers `Config\Auth` when it extends the package config. An `app/Config/Auth.php` that doesn't extend it is ignored with a logged warning that says how to fix it.
+- Commands silently lost values given as `--option=value` (CodeIgniter's parser only reads `--option value`), so `auth:user:create --email=...` failed with "Provide --password". Both forms now work in every `auth:*` command.
+- `auth:sync` rewrote every role-permission link on each run and reported them all as changes. It now writes only the difference.
+
+### Added
+- `auth:sync` prints the config class and file it read, how many roles and permissions that config defines, and every permission, role and role-permission link it created, updated, pruned, linked or unlinked. "Nothing to change" when the database already matches.
+- `auth:sync --dry-run` shows those changes without writing them.
+- `RbacSynchronizer::run($prune, $dryRun)` returns a `SyncReport` with the changes by name. `sync()` still returns counts; its `role_permission_links` now counts links added, and a new `role_permission_links_removed` counts links removed.
+
+### Changed
+- `codeigniter4/framework: ^4.7` moved from `require-dev` to `require`, so Composer refuses to install the package next to an older CodeIgniter.
+
+### Upgrading
+- Run `php spark auth:sync --dry-run` once after upgrading. If your app's roles were previously synced from the package defaults, it shows what the real sync will add.
+
 ## [0.10.2] - 2026-11-12
 
 ### Fixed
 - `AfricasTalkingNotifier` reported messages as failed ("Delivery over 'sms' failed: Success") when Africa's Talking accepted them with status code 100 (Processed) or 102 (Queued); only 101 (Sent) was accepted. All three now count as accepted. The code had been delivered, but callers treated it as unsent.
+
 ## [0.10.0] - 2026-10-08
 
 ### Added

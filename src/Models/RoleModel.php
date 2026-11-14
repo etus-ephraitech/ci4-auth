@@ -24,7 +24,7 @@ class RoleModel extends Model
     public function __construct(?ConnectionInterface $db = null, ?ValidationInterface $validation = null)
     {
         /** @var Auth $config */
-        $config      = config(Auth::class);
+        $config      = \Ephraitech\Auth\Config\ConfigResolver::resolve();
         $this->table = $config->table('roles');
 
         if ($config->DBGroup !== null) {

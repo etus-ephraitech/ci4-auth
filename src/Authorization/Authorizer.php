@@ -64,7 +64,7 @@ final class Authorizer
     public static function create(?Auth $config = null, ?TenantContext $tenant = null): self
     {
         /** @var Auth $config */
-        $config ??= config(Auth::class);
+        $config ??= \Ephraitech\Auth\Config\ConfigResolver::resolve();
 
         /** @var RoleModel $roles */
         $roles = Factories::models(RoleModel::class, ['preferApp' => false]);

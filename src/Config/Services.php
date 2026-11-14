@@ -45,17 +45,20 @@ use Ephraitech\Auth\Flows\VerificationFlow;
  *   service('authCredentials')      CredentialVerifier
  *   service('authThrottle')         LoginThrottle
  *   service('authRegistrar')        UserRegistrar
+ *   service('authOneTimeCodes')     OneTimeCodeManager
+ *   service('authNotifiers')        NotifierRegistry
  *   service('authPasswordReset')    PasswordResetFlow
  *   service('authVerification')     VerificationFlow
  *
  * All names are prefixed to avoid colliding with other packages.
- * 
- *  service('authOneTimeCodes')     OneTimeCodeManager
- *  service('authNotifiers')        NotifierRegistry
+ * Config always comes from ConfigResolver, so the app's Config\Auth is used.
  */
 class Services extends BaseService
 {
-    private static bool $configValidated = false;
+    /**
+     * Config class already validated in this process.
+     */
+    private static ?string $validatedConfigClass = null;
 
     public static function auth(bool $getShared = true): AuthManager
     {
@@ -261,16 +264,23 @@ class Services extends BaseService
     // ------------------------------------------------------------------
 
     /**
-     * Resolve config (host override preferred) and validate it once per process.
+     * Resolve the app's Config\Auth (or the package defaults) and validate
+     * it once per process. Warns once when an app/Config/Auth.php exists
+     * but is ignored because it doesn't extend the package config.
      */
     private static function authConfig(): Auth
     {
-        /** @var Auth $config */
-        $config = config(Auth::class);
+        $config = ConfigResolver::resolve();
 
-        if (! self::$configValidated) {
+        if (self::$validatedConfigClass !== $config::class) {
+            $ignored = ConfigResolver::ignoredAppClassReason();
+
+            if ($ignored !== null) {
+                log_message('warning', 'Ephraitech Auth: {reason}', ['reason' => $ignored]);
+            }
+
             $config->assertValid();
-            self::$configValidated = true;
+            self::$validatedConfigClass = $config::class;
         }
 
         return $config;

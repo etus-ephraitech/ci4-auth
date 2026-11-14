@@ -28,7 +28,7 @@ final class PasswordManager
     public static function create(?Auth $config = null): self
     {
         /** @var Auth $config */
-        $config ??= config(Auth::class);
+        $config ??= \Ephraitech\Auth\Config\ConfigResolver::resolve();
 
         /** @var IdentityModel $identities */
         $identities = Factories::models(IdentityModel::class, ['preferApp' => false]);

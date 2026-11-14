@@ -31,7 +31,7 @@ final class LoginThrottle
     public static function create(?Auth $config = null): self
     {
         /** @var Auth $config */
-        $config ??= config(Auth::class);
+        $config ??= \Ephraitech\Auth\Config\ConfigResolver::resolve();
 
         /** @var LoginAttemptModel $attempts */
         $attempts = Factories::models(LoginAttemptModel::class, ['preferApp' => false]);

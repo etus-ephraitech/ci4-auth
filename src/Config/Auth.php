@@ -28,8 +28,10 @@ use LogicException;
  *         public array $requiredIdentifiers = ['phone'];
  *     }
  *
- * The package always resolves config(\Ephraitech\Auth\Config\Auth::class);
- * CodeIgniter's config factory returns the host's Config\Auth when it exists.
+ * The package never calls config() for this class directly: since
+ * CodeIgniter 4.4 a fully qualified name skips the app's Config\Auth.
+ * Every package class goes through ConfigResolver::resolve(), which returns
+ * the app's Config\Auth whenever it extends this class.
  */
 class Auth extends BaseConfig
 {

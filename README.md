@@ -18,7 +18,7 @@ roles and permissions, and optional multi-tenancy, in one package.
 ## Requirements
 
 - PHP 8.2+ with `mbstring` and `intl`
-- CodeIgniter 4.5+
+- CodeIgniter 4.7+
 - MySQL 5.7.7+ / MariaDB 10.2.2+ (or SQLite / PostgreSQL)
 
 ## Installation
@@ -284,7 +284,7 @@ Available events: `REGISTERED`, `LOGIN`, `LOGIN_FAILED`, `LOCKED_OUT`, `LOGOUT`,
 | Command | Purpose |
 |---|---|
 | `auth:publish` | Create `app/Config/Auth.php` |
-| `auth:sync [--prune]` | Sync roles and permissions from config |
+| `auth:sync [--prune] [--dry-run]` | Sync roles and permissions from config, listing every change |
 | `auth:user:create` | Create a user (prompts for missing input) |
 | `auth:role list\|assign\|remove <user> [role]` | Manage roles |
 | `auth:token issue\|list\|revoke\|revoke-all` | Manage API keys and tokens |

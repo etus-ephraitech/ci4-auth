@@ -6,7 +6,7 @@ namespace Ephraitech\Auth\Commands\Concerns;
 
 use CodeIgniter\CLI\CLI;
 use CodeIgniter\Config\Factories;
-use Ephraitech\Auth\Config\Auth;
+use Ephraitech\Auth\Config\ConfigResolver;
 use Ephraitech\Auth\Entities\User;
 use Ephraitech\Auth\Models\UserModel;
 
@@ -20,19 +20,63 @@ trait InteractsWithAuth
      */
     protected function hasOption(array $params, string $name): bool
     {
-        return array_key_exists($name, $params) || array_key_exists($name, CLI::getOptions());
+        return array_key_exists($name, $this->cliOptions($params));
     }
 
     /**
      * Option value; NULL when absent or given as a bare flag.
+     * Accepts both "--email value" and "--email=value".
      *
      * @param array<int|string, string|null> $params
      */
     protected function option(array $params, string $name): ?string
     {
-        $value = $params[$name] ?? CLI::getOption($name);
+        $value = $this->cliOptions($params)[$name] ?? null;
 
         return is_string($value) ? $value : null;
+    }
+
+    /**
+     * All options given to the command, normalised to name => value.
+     *
+     * CodeIgniter's CLI parser only understands "--email value". Given
+     * "--email=jane@example.com" it records an option literally named
+     * "email=jane@example.com" with no value, so the value was silently
+     * lost. Both forms are accepted here; options passed in $params take
+     * precedence over CLI::getOptions().
+     *
+     * Put options after positional arguments: CodeIgniter treats the word
+     * following an option as that option's value.
+     *
+     * @param array<int|string, string|null> $params
+     *
+     * @return array<string, string|null>
+     */
+    protected function cliOptions(array $params): array
+    {
+        $options = [];
+
+        foreach ([CLI::getOptions(), $params] as $source) {
+            foreach ($source as $key => $value) {
+                if (! is_string($key)) {
+                    continue;
+                }
+
+                $key = ltrim($key, '-');
+
+                if (str_contains($key, '=')) {
+                    [$key, $value] = explode('=', $key, 2);
+                }
+
+                if ($key === '') {
+                    continue;
+                }
+
+                $options[$key] = is_string($value) ? $value : null;
+            }
+        }
+
+        return $options;
     }
 
     /**
@@ -93,8 +137,7 @@ trait InteractsWithAuth
             return null;
         }
 
-        /** @var Auth $config */
-        $config = config(Auth::class);
+        $config = ConfigResolver::resolve();
 
         /** @var UserModel $users */
         $users = Factories::models($config->userModel, ['preferApp' => false]);

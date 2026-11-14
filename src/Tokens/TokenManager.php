@@ -42,7 +42,7 @@ final class TokenManager
     public static function create(?Auth $config = null): self
     {
         /** @var Auth $config */
-        $config ??= config(Auth::class);
+        $config ??= \Ephraitech\Auth\Config\ConfigResolver::resolve();
 
         /** @var AccessTokenModel $tokens */
         $tokens = Factories::models(AccessTokenModel::class, ['preferApp' => false]);

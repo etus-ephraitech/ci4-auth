@@ -27,7 +27,7 @@ class CreateAuthOneTimeCodesTable extends Migration
     public function __construct(?Forge $forge = null)
     {
         /** @var Auth $config */
-        $config       = config(Auth::class);
+        $config       = \Ephraitech\Auth\Config\ConfigResolver::resolve();
         $this->config = $config;
 
         if ($config->DBGroup !== null) {

@@ -57,7 +57,7 @@
         public static function create(?Auth $config = null): self
         {
             /** @var Auth $config */
-            $config ??= config(Auth::class);
+            $config ??= \Ephraitech\Auth\Config\ConfigResolver::resolve();
 
             /** @var UserModel $users */
             $users = Factories::models($config->userModel, ['preferApp' => false]);

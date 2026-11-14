@@ -22,7 +22,7 @@ What you get:
 | Requirement | Version |
 | --- | --- |
 | PHP | 8.2 or newer, with `mbstring` and `intl` |
-| CodeIgniter | 4.5 or newer |
+| CodeIgniter | 4.7 or newer (enforced by Composer) |
 | Database | MySQL 5.7.7+ / MariaDB 10.2.2+, SQLite 3, or PostgreSQL |
 
 ### Where things live
@@ -1086,14 +1086,18 @@ Rules enforced at startup: permission names are dotted lowercase (`area.action`)
 ### Sync to the database
 
 ```bash
+php spark auth:sync --dry-run  # show what would change, write nothing
 php spark auth:sync            # add and update
 php spark auth:sync --prune    # also delete system roles/permissions removed from config
 ```
 
+The command first prints which config class it read and how many roles and permissions it defines, so a deploy that picked up the wrong config is obvious (for example 3 roles where you expected 12). It then lists every permission and role created, updated or pruned, and every permission added to or removed from each role. An unchanged config prints "Nothing to change".
+
 - Config entries are created or updated and flagged as system rows.
 - Roles listed in `$matrix` get exactly the expanded permission set; wildcards are expanded at sync time, so request-time checks are plain lookups.
 - Roles and permissions created at runtime (for example from an admin screen) and roles not listed in `$matrix` are never touched.
-- The sync runs in one transaction; a failure changes nothing.
+- Only differences are written, and the sync runs in one transaction; a failure changes nothing.
+- In code, `RbacSynchronizer::create()->run($prune, $dryRun)` returns a `SyncReport` with the same details.
 
 Run it after every deployment that changes these arrays.
 
@@ -1243,7 +1247,7 @@ Four filter aliases and seven helper functions are registered automatically when
 'filter' => ['auth:token', 'tenant:required', 'can:orders.view']
 ```
 
-Multiple filters per route need CodeIgniter 4.5 or newer, the package minimum.
+Multiple filters per route need CodeIgniter 4.5 or newer; the package itself requires 4.7.
 
 **JSON or redirect?** A filter answers with JSON when the request carries a bearer token, is an AJAX request, or sends `Accept: application/json`. Otherwise it redirects with a flash message. A 401 includes `WWW-Authenticate: Bearer`.
 
@@ -1325,10 +1329,12 @@ Six `spark` commands cover setup, user and role administration, API keys and mai
 
 Wherever a command takes a user, you may pass an ID, a UUID, an email, a username or a phone number in any local format. Purely numeric input is treated as an ID, so type phone numbers with a leading `0` or `+`.
 
+Options work as `--email jane@example.com` or `--email=jane@example.com`. Put options after the positional arguments: CodeIgniter reads the word after an option as its value.
+
 | Command | Purpose |
 | --- | --- |
 | `auth:publish [--views] [--force]` | Create `app/Config/Auth.php`, or copy the page views to `app/Views/auth/` |
-| `auth:sync [--prune]` | Sync roles, permissions and the matrix from config |
+| `auth:sync [--prune] [--dry-run]` | Sync roles, permissions and the matrix from config, listing every change |
 | `auth:user:create` | Create a user, prompting for anything not given |
 | `auth:role list\|assign\|remove <user> [role]` | Manage a user's roles |
 | `auth:token issue\|list\|revoke\|revoke-all` | Manage API keys and tokens |
@@ -1532,7 +1538,7 @@ abstract class AppTestCase extends CIUnitTestCase
         $this->resetServices();   // habit 1: fresh services per test
         parent::setUp();
 
-        $this->authConfig = config(Auth::class);
+        $this->authConfig = \Ephraitech\Auth\Config\ConfigResolver::resolve();   // your Config\Auth, not the package defaults
         $this->authConfig->hashOptions = ['cost' => 4];   // habit 3: fast hashing
         $this->authConfig->notifiers   = ['email' => CapturingNotifier::class, 'sms' => CapturingNotifier::class];
 
@@ -1635,6 +1641,7 @@ New options, table names, redirects and view keys added in a release fall back t
 
 | Version | Date | Highlights |
 | --- | --- | --- |
+| 0.10.3 | 2026-11-14 | Always reads the app's `Config\Auth` (fixes package defaults being used on CodeIgniter 4.4+); `auth:sync` names its config and every change, adds `--dry-run`; commands accept `--option=value`; requires CodeIgniter 4.7 |
 | 0.10.0 | 2026-10-08 | Built-in web pages and JSON API, one-time codes, password reset, email/phone verification, notifiers (email, Africa's Talking, log); fixes the empty filter Registrar from 0.9.x |
 | 0.9.1 | 2026-10-08 | Minimum PHP raised to 8.2 |
 | 0.9.0 | 2026-10-07 | First release: users and identities, guards, tokens, RBAC, multi-tenancy, throttling, filters, helpers, CLI, events |

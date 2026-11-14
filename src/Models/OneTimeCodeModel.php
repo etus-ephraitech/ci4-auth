@@ -36,7 +36,7 @@ class OneTimeCodeModel extends Model
     public function __construct(?ConnectionInterface $db = null, ?ValidationInterface $validation = null)
     {
         /** @var Auth $config */
-        $config      = config(Auth::class);
+        $config      = \Ephraitech\Auth\Config\ConfigResolver::resolve();
         $this->table = $config->table('one_time_codes');
 
         if ($config->DBGroup !== null) {

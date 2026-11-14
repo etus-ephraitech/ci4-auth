@@ -8,6 +8,7 @@ use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use Ephraitech\Auth\Commands\Concerns\InteractsWithAuth;
 use Ephraitech\Auth\Config\Auth;
+use Ephraitech\Auth\Config\ConfigResolver;
 use Ephraitech\Auth\Exceptions\AuthException;
 use Ephraitech\Auth\Exceptions\InvalidIdentifierException;
 use Ephraitech\Auth\Exceptions\RegistrationException;
@@ -40,8 +41,7 @@ class AuthUserCreate extends BaseCommand
      */
     public function run(array $params)
     {
-        /** @var Auth $config */
-        $config      = config(Auth::class);
+        $config      = ConfigResolver::resolve();
         $interactive = $this->interactive($params);
         $identifiers = $this->collectIdentifiers($params, $config, $interactive);
         $generated   = false;

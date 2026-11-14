@@ -21,14 +21,14 @@
   ],
   "require": {
     "php": "^8.2",
-    "ext-mbstring": "*"
+    "ext-mbstring": "*",
+    "codeigniter4/framework": "^4.7"
   },
   "support": {
     "issues": "https://github.com/etus-ephraitech/ci4-auth/issues",
     "source": "https://github.com/etus-ephraitech/ci4-auth"
   },
   "require-dev": {
-    "codeigniter4/framework": "^4.5",
     "phpunit/phpunit": "^10.5"
   },
   "autoload": {

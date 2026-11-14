@@ -9,6 +9,7 @@ use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\I18n\Time;
 use Config\Database;
 use Ephraitech\Auth\Config\Auth;
+use Ephraitech\Auth\Config\ConfigResolver;
 use Ephraitech\Auth\Entities\Permission;
 use Ephraitech\Auth\Entities\Role;
 use Ephraitech\Auth\Exceptions\AuthException;
@@ -21,10 +22,13 @@ use Throwable;
  *
  *   - Config entries are upserted and flagged is_system = 1.
  *   - Roles listed in $matrix get EXACTLY the expanded permission set
- *     (config is the source of truth for them).
+ *     (config is the source of truth for them). Only the difference is
+ *     written, so an unchanged config produces an empty report.
  *   - Roles and permissions created at runtime (is_system = 0), and roles
  *     not listed in $matrix, are never touched.
  *   - With $prune, system rows no longer in config are deleted.
+ *   - With $dryRun, every change is computed inside the transaction and
+ *     then rolled back, so the report shows exactly what a real run would do.
  *
  * Runs in one transaction; any failure leaves the database unchanged.
  */
@@ -42,8 +46,7 @@ final class RbacSynchronizer
 
     public static function create(?Auth $config = null): self
     {
-        /** @var Auth $config */
-        $config ??= config(Auth::class);
+        $config ??= ConfigResolver::resolve();
 
         /** @var RoleModel $roles */
         $roles = Factories::models(RoleModel::class, ['preferApp' => false]);
@@ -55,23 +58,21 @@ final class RbacSynchronizer
     }
 
     /**
-     * @return array<string, int> Counts of what changed.
+     * Sync and report every change by name.
      *
      * @throws AuthException
      */
-    public function sync(bool $prune = false): array
+    public function run(bool $prune = false, bool $dryRun = false): SyncReport
     {
         $this->config->assertValid();
 
-        $report = [
-            'permissions_created'   => 0,
-            'permissions_updated'   => 0,
-            'permissions_pruned'    => 0,
-            'roles_created'         => 0,
-            'roles_updated'         => 0,
-            'roles_pruned'          => 0,
-            'role_permission_links' => 0,
-        ];
+        $report = new SyncReport(
+            $this->config::class,
+            count($this->config->roles),
+            count($this->config->permissions),
+            $dryRun,
+            $prune,
+        );
 
         $this->db->transBegin();
 
@@ -84,7 +85,11 @@ final class RbacSynchronizer
                 throw new AuthException('RBAC sync failed; all changes were rolled back.');
             }
 
-            $this->db->transCommit();
+            if ($dryRun) {
+                $this->db->transRollback();
+            } else {
+                $this->db->transCommit();
+            }
         } catch (Throwable $e) {
             $this->db->transRollback();
 
@@ -95,9 +100,18 @@ final class RbacSynchronizer
     }
 
     /**
-     * @param array<string, int> $report
+     * Sync and return change counts (the pre-0.10.3 API).
+     *
+     * @return array<string, int>
+     *
+     * @throws AuthException
      */
-    private function syncPermissions(array &$report, bool $prune): void
+    public function sync(bool $prune = false): array
+    {
+        return $this->run($prune)->counts();
+    }
+
+    private function syncPermissions(SyncReport $report, bool $prune): void
     {
         /** @var array<string, Permission> $existing */
         $existing = [];
@@ -116,18 +130,18 @@ final class RbacSynchronizer
                     'is_system'   => 1,
                 ]), "create permission '{$name}'");
 
-                $report['permissions_created']++;
+                $report->permissionsCreated[] = $name;
 
                 continue;
             }
 
-            if ($current->description !== $description || ! $current->is_system) {
+            if ((string) $current->description !== (string) $description || ! $current->is_system) {
                 $this->must($this->permissions->update($current->id, [
                     'description' => $description,
                     'is_system'   => 1,
                 ]), "update permission '{$name}'");
 
-                $report['permissions_updated']++;
+                $report->permissionsUpdated[] = $name;
             }
         }
 
@@ -138,15 +152,12 @@ final class RbacSynchronizer
         foreach ($existing as $name => $permission) {
             if ($permission->is_system && ! array_key_exists($name, $this->config->permissions)) {
                 $this->must($this->permissions->delete($permission->id), "prune permission '{$name}'");
-                $report['permissions_pruned']++;
+                $report->permissionsPruned[] = $name;
             }
         }
     }
 
-    /**
-     * @param array<string, int> $report
-     */
-    private function syncRoles(array &$report, bool $prune): void
+    private function syncRoles(SyncReport $report, bool $prune): void
     {
         /** @var array<string, Role> $existing */
         $existing = [];
@@ -168,19 +179,23 @@ final class RbacSynchronizer
                     'is_system'   => 1,
                 ]), "create role '{$name}'");
 
-                $report['roles_created']++;
+                $report->rolesCreated[] = $name;
 
                 continue;
             }
 
-            if ($current->title !== $title || $current->description !== $description || ! $current->is_system) {
+            if (
+                $current->title !== $title
+                || (string) $current->description !== (string) $description
+                || ! $current->is_system
+            ) {
                 $this->must($this->roles->update($current->id, [
                     'title'       => $title,
                     'description' => $description,
                     'is_system'   => 1,
                 ]), "update role '{$name}'");
 
-                $report['roles_updated']++;
+                $report->rolesUpdated[] = $name;
             }
         }
 
@@ -191,21 +206,23 @@ final class RbacSynchronizer
         foreach ($existing as $name => $role) {
             if ($role->is_system && ! array_key_exists($name, $this->config->roles)) {
                 $this->must($this->roles->delete($role->id), "prune role '{$name}'");
-                $report['roles_pruned']++;
+                $report->rolesPruned[] = $name;
             }
         }
     }
 
     /**
-     * @param array<string, int> $report
+     * Link each matrix role to exactly its expanded permissions, writing
+     * only the links that are missing or no longer wanted.
      */
-    private function syncMatrix(array &$report): void
+    private function syncMatrix(SyncReport $report): void
     {
-        $permissionIds = $this->permissions->idsByName();
-        $roleIds       = $this->roles->idsByName();
-        $knownNames    = array_keys($permissionIds);
-        $table         = $this->config->table('role_permissions');
-        $now           = Time::now()->toDateTimeString();
+        $permissionIds   = $this->permissions->idsByName();
+        $permissionNames = array_flip($permissionIds);
+        $roleIds         = $this->roles->idsByName();
+        $knownNames      = array_keys($permissionIds);
+        $table           = $this->config->table('role_permissions');
+        $now             = Time::now()->toDateTimeString();
 
         foreach ($this->config->matrix as $role => $grants) {
             if (! isset($roleIds[$role])) {
@@ -213,24 +230,53 @@ final class RbacSynchronizer
             }
 
             $roleId = $roleIds[$role];
-            $names  = PermissionMatcher::expand($grants, $knownNames);
 
-            $this->db->table($table)->where('role_id', $roleId)->delete();
+            $wanted = [];
 
-            if ($names === []) {
-                continue;
+            foreach (PermissionMatcher::expand($grants, $knownNames) as $name) {
+                $wanted[$permissionIds[$name]] = $name;
             }
 
-            $this->db->table($table)->insertBatch(array_map(
-                static fn(string $name): array => [
-                    'role_id'       => $roleId,
-                    'permission_id' => $permissionIds[$name],
-                    'created_at'    => $now,
-                ],
-                $names
-            ));
+            $rows = $this->db->table($table)
+                ->select('permission_id')
+                ->where('role_id', $roleId)
+                ->get()
+                ->getResultArray();
 
-            $report['role_permission_links'] += count($names);
+            $current = [];
+
+            foreach ($rows as $row) {
+                $id           = (int) $row['permission_id'];
+                $current[$id] = $permissionNames[$id] ?? (string) $id;
+            }
+
+            $toAdd    = array_diff_key($wanted, $current);
+            $toRemove = array_diff_key($current, $wanted);
+
+            if ($toRemove !== []) {
+                $this->db->table($table)
+                    ->where('role_id', $roleId)
+                    ->whereIn('permission_id', array_keys($toRemove))
+                    ->delete();
+            }
+
+            if ($toAdd !== []) {
+                $this->db->table($table)->insertBatch(array_map(
+                    static fn (int $permissionId): array => [
+                        'role_id'       => $roleId,
+                        'permission_id' => $permissionId,
+                        'created_at'    => $now,
+                    ],
+                    array_keys($toAdd)
+                ));
+            }
+
+            $added   = array_values($toAdd);
+            $removed = array_values($toRemove);
+            sort($added);
+            sort($removed);
+
+            $report->recordLinks($role, $added, $removed);
         }
     }
 

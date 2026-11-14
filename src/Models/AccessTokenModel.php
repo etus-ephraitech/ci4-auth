@@ -37,7 +37,7 @@ class AccessTokenModel extends Model
     public function __construct(?ConnectionInterface $db = null, ?ValidationInterface $validation = null)
     {
         /** @var Auth $config */
-        $config      = config(Auth::class);
+        $config      = \Ephraitech\Auth\Config\ConfigResolver::resolve();
         $this->table = $config->table('access_tokens');
 
         if ($config->DBGroup !== null) {

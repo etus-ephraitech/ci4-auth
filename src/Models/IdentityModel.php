@@ -45,7 +45,7 @@ class IdentityModel extends Model
     public function __construct(?ConnectionInterface $db = null, ?ValidationInterface $validation = null)
     {
         /** @var Auth $config */
-        $config = config(Auth::class);
+        $config = \Ephraitech\Auth\Config\ConfigResolver::resolve();
 
         $this->authConfig = $config;
         $this->normalizer = new IdentifierNormalizer($config);
