@@ -51,6 +51,14 @@ class AuthSync extends BaseCommand
 
         $this->printSource($report);
 
+        if ($report->rolesSkipped !== []) {
+            CLI::write(
+                'Managed in the app, left alone (' . count($report->rolesSkipped) . '): ' . implode(', ', $report->rolesSkipped),
+                'light_gray'
+            );
+            CLI::newLine();
+        }
+
         if (! $report->hasChanges()) {
             CLI::write(
                 $dryRun ? 'Dry run: nothing would change. The database already matches the config.'
@@ -78,6 +86,17 @@ class AuthSync extends BaseCommand
     {
         CLI::write('Config:  ' . $report->configClass . ' (' . $this->configFile($report->configClass) . ')');
         CLI::write("Defines: {$report->configRoleCount} role(s), {$report->configPermissionCount} permission(s)");
+
+        foreach (ConfigResolver::modules() as $module) {
+            CLI::write(sprintf(
+                '  from %s: +%d permission(s), +%d role(s), +%d grant(s)',
+                $module['class'],
+                $module['permissions'],
+                $module['roles'],
+                $module['grants'],
+            ));
+        }
+
         CLI::newLine();
     }
 

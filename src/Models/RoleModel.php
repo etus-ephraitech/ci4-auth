@@ -7,7 +7,7 @@ namespace Ephraitech\Auth\Models;
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Model;
 use CodeIgniter\Validation\ValidationInterface;
-use Ephraitech\Auth\Config\Auth;
+use Ephraitech\Auth\Config\ConfigResolver;
 use Ephraitech\Auth\Entities\Role;
 
 class RoleModel extends Model
@@ -19,12 +19,11 @@ class RoleModel extends Model
     protected $dateFormat     = 'datetime';
     protected $createdField   = 'created_at';
     protected $updatedField   = 'updated_at';
-    protected $allowedFields  = ['name', 'title', 'description', 'is_system'];
+    protected $allowedFields  = ['name', 'title', 'description', 'is_system', 'app_managed'];
 
     public function __construct(?ConnectionInterface $db = null, ?ValidationInterface $validation = null)
     {
-        /** @var Auth $config */
-        $config      = \Ephraitech\Auth\Config\ConfigResolver::resolve();
+        $config      = ConfigResolver::resolve();
         $this->table = $config->table('roles');
 
         if ($config->DBGroup !== null) {

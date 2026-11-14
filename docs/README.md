@@ -1108,21 +1108,30 @@ In routes:
 ```php
 $routes->get('visits', 'Visits::index', ['filter' => 'can:visits.view']);
 $routes->post('visits', 'Visits::store', ['filter' => 'can:visits.view,visits.create']);   // all
-$routes->get('reports', 'Reports::index', ['filter' => 'can:any,reports.view,reports.export']);
+$routes->get('reports', 'Reports::index', ['filter' => 'can:reports.view|reports.export']);           // any
 ```
 
-In controllers and views:
+`can:` and `role:` imply sign-in: a signed-out visitor is sent to the login page (401 for API clients), so a route needs no separate `auth` filter beside them. To also restrict a route to one guard, put it first: `can:session,visits.view`.
+
+In controllers and views, for the **signed-in** user:
 
 ```php
 can('visits.create');                       // one permission
+can('reports.view|reports.export');         // any of them
 can(['visits.view', 'visits.create']);      // all of them
-can_any(['reports.view', 'reports.export']);
-has_role('manager');                        // any of the given roles
+has_role('manager|admin');                  // any of the roles
 
 auth()->can('visits.delete');               // same as can(), on the AuthManager
 ```
 
-These apply the current token's abilities and tenant automatically.
+These apply the current token's abilities and tenant automatically. The same `a|b` form works everywhere a permission or role is accepted, including the authorizer and `can_any()`.
+
+In services, commands, seeders and queued jobs, where nobody is signed in, check a **given** user with `can_user()`. `can()` would always say no there:
+
+```php
+can_user($signatory, 'documents.sign');
+can_user($userId, 'documents.view|documents.approve');
+```
 
 ### Assign roles and grants
 
@@ -1146,6 +1155,8 @@ Every method accepts a `User` entity or a user ID, plus an optional tenant ID (s
 
 ### Checking another user, or with a token's abilities
 
+`can_user($user, $permission)` is the short form; the authorizer offers the full set:
+
 ```php
 $authz->can($otherUser, 'visits.view');
 $authz->can($user, 'users.delete', null, ['users.view']);   // false: abilities are a ceiling
@@ -1155,7 +1166,50 @@ $authz->canAll($user, [...]);
 
 ### Performance
 
-A user's roles and permissions are loaded with three queries the first time they are checked in a request, then cached. Ten checks in a view cost the same as one. Any assignment change for that user clears their cache immediately.
+A user's roles and permissions are loaded with three queries the first time they are checked in a request, then cached. Ten checks in a view cost the same as one. Any assignment change for that user, and any role edit through `service('authRoles')`, clears the cache immediately.
+
+### Permissions declared by modules
+
+A module can declare its own permissions instead of listing them in the app's `Config\Auth`. Add a `Config/AuthPermissions.php` to the module, in any namespace CodeIgniter knows:
+
+```php
+namespace Modules\Documents\Config;
+
+class AuthPermissions extends \Ephraitech\Auth\Config\AuthPermissions
+{
+    public array $permissions = [
+        'documents.view' => 'View documents',
+        'documents.sign' => 'Sign documents',
+    ];
+
+    public array $matrix = [
+        'manager' => ['documents.*'],   // added to the role's grants, never replacing them
+        'staff'   => ['documents.view'],
+    ];
+}
+```
+
+Every module's lists are merged into the config when it is first loaded, so `auth:sync`, permission checks and config validation all see them. `auth:sync` names each module and what it added. Where a module and `Config\Auth` define the same permission or role, `Config\Auth` wins. A module granting to a role also makes `auth:sync` manage that role's permissions. Turn discovery off with `public bool $discoverModulePermissions = false;`.
+
+### Roles edited in the app
+
+For an admin "Roles" screen, use `service('authRoles')`. Any role it creates or edits is marked as managed in the app, so `auth:sync` leaves its title, description and permissions alone (listing it as "managed in the app") and never prunes it.
+
+```php
+$roles = service('authRoles');
+
+$roles->createRole('auditor', 'Auditor', 'Read-only access', ['users.view', 'reports.*']);
+$roles->updateRole('manager', title: 'Team manager');
+$roles->setPermissions('manager', ['visits.*', 'reports.view']);   // returns ['added' => [...], 'removed' => [...]]
+
+$roles->all();                      // every role, with isAppManaged()
+$roles->permissionsOf('manager');
+
+$roles->release('manager');         // back to Config\Auth; the next auth:sync restores it
+$roles->deleteRole('auditor');      // roles created in the app only
+```
+
+Unknown permission names are rejected with the list of unknown ones. The super role's permissions can't be edited (it passes every check), and roles defined in `Config\Auth` can't be deleted here: remove them from config and run `auth:sync --prune`. Requires the migration added in 0.11.0.
 
 ## 13. Multi-tenancy
 
@@ -1234,20 +1288,23 @@ Four filter aliases and seven helper functions are registered automatically when
 | Filter | Arguments | Passes when | Fails with |
 | --- | --- | --- | --- |
 | `auth` | none, `session`, `token`, or `session,token` | A user is signed in through an allowed guard | 401 JSON or redirect to login |
-| `can` | permissions, optionally `any` first | The user holds all (or any) of them, within token abilities and tenant | 403 JSON or redirect to `forbidden` |
-| `role` | role names | The user holds any of them in the tenant scope | 403 JSON or redirect |
+| `can` | permissions (`a|b` = any), optionally `any` first, optionally a guard first | Signed in and holds all (or any) of them, within token abilities and tenant | 401/redirect to login if signed out; 403 JSON or redirect to `forbidden` |
+| `role` | role names, optionally a guard first | Signed in and holds any of them in the tenant scope | 401/redirect to login if signed out; 403 JSON or redirect |
 | `tenant` | none or `required` | See section 13 | 400 or 403 |
 
 ```php
 'filter' => 'auth'                              // either guard
 'filter' => 'auth:token'                        // bearer tokens only
 'filter' => 'can:users.view,users.update'       // all
-'filter' => 'can:any,reports.view,reports.export'
+'filter' => 'can:reports.view|reports.export'   // any
+'filter' => 'can:session,documents.view'        // signed in by session AND holds the permission
 'filter' => 'role:admin,manager'
 'filter' => ['auth:token', 'tenant:required', 'can:orders.view']
 ```
 
 Multiple filters per route need CodeIgniter 4.5 or newer; the package itself requires 4.7.
+
+**No `auth` beside `can`/`role`.** Both imply sign-in. Note that a filter set on a route replaces the filter of its route group in CodeIgniter, so `can:` on a route inside an `auth:session` group drops the session pin: write `can:session,...` where the guard matters.
 
 **JSON or redirect?** A filter answers with JSON when the request carries a bearer token, is an AJAX request, or sends `Accept: application/json`. Otherwise it redirects with a flash message. A 401 includes `WWW-Authenticate: Bearer`.
 
@@ -1262,9 +1319,10 @@ Multiple filters per route need CodeIgniter 4.5 or newer; the package itself req
 | `auth()` | `AuthManager` | `auth()->user()`, `auth()->session()`, `auth()->token()`, `auth()->can()` |
 | `user()` | `?User` | Signed-in user from the active guard |
 | `user_id()` | `?int` |  |
-| `can($permission)` / `can([...])` | `bool` | One permission, or all in the array |
-| `can_any([...])` | `bool` | Any of them |
-| `has_role($role)` / `has_role([...])` | `bool` | Any of the roles |
+| `can('a')` / `can('a|b')` / `can(['a', 'b'])` | `bool` | Signed-in user: one, any, or all |
+| `can_any([...])` / `can_any('a|b')` | `bool` | Signed-in user: any of them |
+| `can_user($user, ...)` | `bool` | A given user or user ID, same forms as `can()`; for services, commands and jobs |
+| `has_role('a')` / `has_role('a|b')` / `has_role([...])` | `bool` | Signed-in user holds any of the roles |
 | `auth_intended_url(?$default)` | `string` | Page the user wanted before signing in |
 
 All accept an optional tenant ID as the last argument where it applies. Each helper is skipped if your app already defines a function with the same name; in that case use the `auth()` methods.
@@ -1345,6 +1403,7 @@ Options work as `--email jane@example.com` or `--email=jane@example.com`. Put op
 ```bash
 php spark auth:user:create --email=admin@example.com --role=superadmin --tenant=global --verified
 php spark auth:user:create --phone=0772123456 --generate --no-interaction
+php spark auth:user:create --email=owner@example.com --first-name=Mark --job-title="Managing Director" --role=superadmin
 ```
 
 | Option | Effect |
@@ -1357,6 +1416,9 @@ php spark auth:user:create --phone=0772123456 --generate --no-interaction
 | `--verified` | Mark the given identifiers verified |
 | `--skip-policy` | Skip password rules (trusted setups only) |
 | `--no-interaction` | Never prompt; fail if input is missing |
+| `--first-name=...`, `--job_title=...` | Any profile column from `$userAllowedFields` (dashes or underscores) |
+
+Columns listed in `$registrationFields` are prompted for when not given. An unknown option, such as a mistyped `--fist-name`, stops the command and lists the columns you can set.
 
 Without `--password` or `--generate`, the password is asked for twice with hidden input on Linux and macOS.
 
@@ -1401,6 +1463,7 @@ Every part of the package is available as a shared CodeIgniter service, and five
 | --- | --- | --- |
 | `auth` | `AuthManager` | Current user, guards, checks, route registration |
 | `authAuthorizer` | `Authorizer` | Roles, permissions, grants |
+| `authRoles` | `RoleManager` | Creating and editing roles in the app |
 | `authTenant` | `TenantContext` | The active tenant |
 | `authRegistrar` | `UserRegistrar` | Creating accounts |
 | `authCredentials` | `CredentialVerifier` | Checking login + password without signing in |
@@ -1641,6 +1704,7 @@ New options, table names, redirects and view keys added in a release fall back t
 
 | Version | Date | Highlights |
 | --- | --- | --- |
+| 0.11.0 | 2026-11-14 | Roles edited in the app (`authRoles`), module-declared permissions, `can_user()`, `a|b` checks, guard pinning in `can:`/`role:`, profile columns in `auth:user:create` |
 | 0.10.3 | 2026-11-14 | Always reads the app's `Config\Auth` (fixes package defaults being used on CodeIgniter 4.4+); `auth:sync` names its config and every change, adds `--dry-run`; commands accept `--option=value`; requires CodeIgniter 4.7 |
 | 0.10.0 | 2026-10-08 | Built-in web pages and JSON API, one-time codes, password reset, email/phone verification, notifiers (email, Africa's Talking, log); fixes the empty filter Registrar from 0.9.x |
 | 0.9.1 | 2026-10-08 | Minimum PHP raised to 8.2 |
@@ -1655,6 +1719,12 @@ From 1.0.0 onward, these only change in a major version:
 - A migration that alters or drops existing columns.
 
 New features, new options with safe defaults and new tables arrive in minor versions; fixes in patch versions.
+
+### Upgrading from 0.10.x to 0.11.0
+
+- Run `php spark migrate -n "Ephraitech\Auth"` to add `auth_roles.app_managed`.
+- `auth:sync --dry-run` shows any permissions your modules' `Config/AuthPermissions.php` files add.
+- Optional clean-ups: remove `auth:session` written beside `can:`/`role:` (use `can:session,...` where the guard matters); replace home-made "any of" helpers with `can('a|b')`; replace `can()` inside services with `can_user()`.
 
 ### Upgrading from 0.9.x to 0.10.0
 

@@ -8,6 +8,7 @@ use CodeIgniter\HTTP\IncomingRequest;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
 use Ephraitech\Auth\Authentication\AuthManager;
+use Ephraitech\Auth\Authentication\Guards\SessionGuard;
 use Ephraitech\Auth\Authentication\Guards\TokenGuard;
 use Ephraitech\Auth\Support\IntendedUrl;
 
@@ -91,6 +92,27 @@ trait HandlesAuthFailures
 
         return $request->isAJAX()
             || str_contains(strtolower($request->getHeaderLine('Accept')), 'application/json');
+    }
+
+    /**
+     * If the first argument names a guard ('session' or 'token'), force
+     * that guard and remove it from the list. Lets 'can:session,x' replace
+     * a separate 'auth:session' on the same route.
+     *
+     * @param list<string> $arguments
+     *
+     * @return list<string>
+     */
+    protected function pinGuard(array $arguments, AuthManager $auth): array
+    {
+        $first = $arguments[0] ?? null;
+
+        if ($first === SessionGuard::NAME || $first === TokenGuard::NAME) {
+            $auth->shouldUse($first);
+            array_shift($arguments);
+        }
+
+        return $arguments;
     }
 
     /**

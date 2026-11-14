@@ -11,6 +11,7 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\I18n\Time;
 use Config\Database;
 use Ephraitech\Auth\Config\Auth;
+use Ephraitech\Auth\Config\ConfigResolver;
 use Ephraitech\Auth\Entities\User;
 use Ephraitech\Auth\Exceptions\AuthException;
 use Ephraitech\Auth\Models\PermissionModel;
@@ -28,6 +29,9 @@ use Throwable;
  *     superadmin is assigned once, globally.
  *   - Checks in tenant X consider global + X assignments only.
  * In single-tenant mode the tenant argument is ignored.
+ *
+ * "Any of" checks: a permission or role written as 'a|b' passes when the
+ * user holds either, in every method that accepts one.
  *
  * Token abilities act as a ceiling: when $abilities is given, a permission
  * must be allowed by BOTH the user's grants and the token's abilities.
@@ -63,8 +67,7 @@ final class Authorizer
 
     public static function create(?Auth $config = null, ?TenantContext $tenant = null): self
     {
-        /** @var Auth $config */
-        $config ??= \Ephraitech\Auth\Config\ConfigResolver::resolve();
+        $config ??= ConfigResolver::resolve();
 
         /** @var RoleModel $roles */
         $roles = Factories::models(RoleModel::class, ['preferApp' => false]);
@@ -80,10 +83,15 @@ final class Authorizer
     // ------------------------------------------------------------------
 
     /**
-     * @param list<string>|null $abilities Token abilities, or NULL for a session/user check.
+     * @param string            $permission One permission, or 'a|b' for any of several.
+     * @param list<string>|null $abilities  Token abilities, or NULL for a session/user check.
      */
     public function can(User|int $user, string $permission, ?string $tenantId = null, ?array $abilities = null): bool
     {
+        if (str_contains($permission, '|')) {
+            return $this->canAny($user, self::splitAny($permission), $tenantId, $abilities);
+        }
+
         if ($abilities !== null && ! PermissionMatcher::anyMatches($abilities, $permission)) {
             return false;
         }
@@ -128,15 +136,33 @@ final class Authorizer
     }
 
     /**
-     * True when the user holds ANY of the given roles.
+     * True when the user holds ANY of the given roles ('a|b' accepted too).
      *
      * @param list<string>|string $roles
      */
     public function hasRole(User|int $user, array|string $roles, ?string $tenantId = null): bool
     {
-        $held = $this->load($this->userId($user), $this->tenantKey($tenantId))['roles'];
+        $held   = $this->load($this->userId($user), $this->tenantKey($tenantId))['roles'];
+        $wanted = [];
 
-        return array_intersect((array) $roles, $held) !== [];
+        foreach ((array) $roles as $role) {
+            array_push($wanted, ...self::splitAny((string) $role));
+        }
+
+        return array_intersect($wanted, $held) !== [];
+    }
+
+    /**
+     * 'a|b' => ['a', 'b'], ignoring blanks.
+     *
+     * @return list<string>
+     */
+    public static function splitAny(string $expression): array
+    {
+        return array_values(array_filter(
+            array_map('trim', explode('|', $expression)),
+            static fn (string $part): bool => $part !== ''
+        ));
     }
 
     public function isSuper(User|int $user, ?string $tenantId = null): bool

@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-14
+
+### Added
+- Roles edited in the app: `service('authRoles')` (`RoleManager`) creates, edits, re-permissions, releases and deletes roles. Roles it touches are marked `app_managed`; `auth:sync` leaves them alone, reports them as "managed in the app" and never prunes them. `release()` hands a config role back to `Config\Auth`. New migration adds `auth_roles.app_managed`.
+- Module permissions: any namespace may provide `Config/AuthPermissions.php` extending `Ephraitech\Auth\Config\AuthPermissions`; its permissions, roles and matrix grants are merged into the config (the app's `Config\Auth` wins on clashes, grants are added). `auth:sync` names each module and what it added. Turn off with `$discoverModulePermissions = false`.
+- `can_user($user, $permission)` checks a given user regardless of who is signed in, for services, commands, seeders and jobs.
+- "Any of" checks as `'a|b'` everywhere a permission or role is accepted: `can()`, `can_any()`, `can_user()`, `has_role()`, the authorizer, and the `can:`/`role:` filters.
+- `can:` and `role:` accept a leading guard (`can:session,documents.view`), replacing a separate `auth:session` on the same route.
+- `auth:user:create` sets profile columns: `--first-name=Mark --job-title="Director"` (any column in `$userAllowedFields`), prompts for `$registrationFields`, and rejects unknown options instead of ignoring them.
+
+### Fixed
+- Commands read options from `$params` only. Reading `CLI::getOptions()` as well made a command run with `command()` inherit the calling process's options.
+- `auth_intended_url()` crashed when an app's `$redirects` override lacked `afterLogin`; it now falls back to the default.
+
+### Upgrading
+- Run `php spark migrate -n "Ephraitech\Auth"`, then `php spark auth:sync --dry-run`.
+- `can:` and `role:` already required sign-in; `auth:session` written beside them can be removed (use `can:session,...` where the guard matters).
+
 ## [0.10.3] - 2026-11-14
 
 ### Fixed

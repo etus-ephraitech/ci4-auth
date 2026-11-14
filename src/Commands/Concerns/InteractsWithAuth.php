@@ -42,8 +42,12 @@ trait InteractsWithAuth
      * CodeIgniter's CLI parser only understands "--email value". Given
      * "--email=jane@example.com" it records an option literally named
      * "email=jane@example.com" with no value, so the value was silently
-     * lost. Both forms are accepted here; options passed in $params take
-     * precedence over CLI::getOptions().
+     * lost. Both forms are accepted here.
+     *
+     * Only $params is read: CodeIgniter passes every option there, both
+     * from spark and from command(). CLI::getOptions() holds the options
+     * of the whole PHP process, so reading it made a command called with
+     * command() inherit the caller's options.
      *
      * Put options after positional arguments: CodeIgniter treats the word
      * following an option as that option's value.
@@ -56,24 +60,22 @@ trait InteractsWithAuth
     {
         $options = [];
 
-        foreach ([CLI::getOptions(), $params] as $source) {
-            foreach ($source as $key => $value) {
-                if (! is_string($key)) {
-                    continue;
-                }
-
-                $key = ltrim($key, '-');
-
-                if (str_contains($key, '=')) {
-                    [$key, $value] = explode('=', $key, 2);
-                }
-
-                if ($key === '') {
-                    continue;
-                }
-
-                $options[$key] = is_string($value) ? $value : null;
+        foreach ($params as $key => $value) {
+            if (! is_string($key)) {
+                continue;
             }
+
+            $key = ltrim($key, '-');
+
+            if (str_contains($key, '=')) {
+                [$key, $value] = explode('=', $key, 2);
+            }
+
+            if ($key === '') {
+                continue;
+            }
+
+            $options[$key] = is_string($value) ? $value : null;
         }
 
         return $options;

@@ -24,8 +24,10 @@ use Throwable;
  *   - Roles listed in $matrix get EXACTLY the expanded permission set
  *     (config is the source of truth for them). Only the difference is
  *     written, so an unchanged config produces an empty report.
- *   - Roles and permissions created at runtime (is_system = 0), and roles
- *     not listed in $matrix, are never touched.
+ *   - Roles and permissions created at runtime (is_system = 0), roles not
+ *     listed in $matrix, and roles edited in the app (app_managed = 1, see
+ *     RoleManager) are never touched; app-managed roles are reported as
+ *     skipped and never pruned.
  *   - With $prune, system rows no longer in config are deleted.
  *   - With $dryRun, every change is computed inside the transaction and
  *     then rolled back, so the report shows exactly what a real run would do.
@@ -171,6 +173,12 @@ final class RbacSynchronizer
             $description = $definition['description'] ?? null;
             $current     = $existing[$name] ?? null;
 
+            if ($current !== null && $current->isAppManaged()) {
+                $report->rolesSkipped[] = $name;
+
+                continue;
+            }
+
             if ($current === null) {
                 $this->must($this->roles->insert([
                     'name'        => $name,
@@ -204,7 +212,7 @@ final class RbacSynchronizer
         }
 
         foreach ($existing as $name => $role) {
-            if ($role->is_system && ! array_key_exists($name, $this->config->roles)) {
+            if ($role->is_system && ! $role->isAppManaged() && ! array_key_exists($name, $this->config->roles)) {
                 $this->must($this->roles->delete($role->id), "prune role '{$name}'");
                 $report->rolesPruned[] = $name;
             }
@@ -220,6 +228,13 @@ final class RbacSynchronizer
         $permissionIds   = $this->permissions->idsByName();
         $permissionNames = array_flip($permissionIds);
         $roleIds         = $this->roles->idsByName();
+        $appManaged      = [];
+
+        foreach ($this->roles->findAll() as $row) {
+            if ($row->isAppManaged()) {
+                $appManaged[(string) $row->name] = true;
+            }
+        }
         $knownNames      = array_keys($permissionIds);
         $table           = $this->config->table('role_permissions');
         $now             = Time::now()->toDateTimeString();
@@ -227,6 +242,14 @@ final class RbacSynchronizer
         foreach ($this->config->matrix as $role => $grants) {
             if (! isset($roleIds[$role])) {
                 throw new AuthException("Role '{$role}' is missing after sync.");
+            }
+
+            if (isset($appManaged[$role])) {
+                if (! in_array($role, $report->rolesSkipped, true)) {
+                    $report->rolesSkipped[] = $role;
+                }
+
+                continue;
             }
 
             $roleId = $roleIds[$role];

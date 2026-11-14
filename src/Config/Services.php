@@ -12,6 +12,7 @@ use Ephraitech\Auth\Authentication\Guards\SessionGuard;
 use Ephraitech\Auth\Authentication\Guards\TokenGuard;
 use Ephraitech\Auth\Authentication\LoginThrottle;
 use Ephraitech\Auth\Authorization\Authorizer;
+use Ephraitech\Auth\Authorization\RoleManager;
 use Ephraitech\Auth\Authorization\TenantContext;
 use Ephraitech\Auth\Models\IdentityModel;
 use Ephraitech\Auth\Models\LoginAttemptModel;
@@ -39,6 +40,7 @@ use Ephraitech\Auth\Flows\VerificationFlow;
  *   service('auth')                 AuthManager (guards + checks)
  *   service('authTenant')           TenantContext
  *   service('authAuthorizer')       Authorizer
+ *   service('authRoles')            RoleManager (roles edited in the app)
  *   service('authTokens')           TokenManager
  *   service('authPasswords')        PasswordManager
  *   service('authPasswordChanger')  PasswordChanger
@@ -113,6 +115,20 @@ class Services extends BaseService
             self::packageModel(RoleModel::class),
             self::packageModel(PermissionModel::class),
             service('authTenant'),
+        );
+    }
+
+    public static function authRoles(bool $getShared = true): RoleManager
+    {
+        if ($getShared) {
+            return static::getSharedInstance('authRoles');
+        }
+
+        return new RoleManager(
+            self::authConfig(),
+            self::packageModel(RoleModel::class),
+            self::packageModel(PermissionModel::class),
+            service('authAuthorizer'),
         );
     }
 

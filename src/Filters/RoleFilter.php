@@ -12,9 +12,11 @@ use Ephraitech\Auth\Filters\Concerns\HandlesAuthFailures;
 
 /**
  * Requires ANY of the listed roles in the active tenant scope.
+ * Implies sign-in, like the 'can' filter.
  *
  *   'role:admin'
- *   'role:admin,manager'
+ *   'role:admin,manager'        (or 'role:admin|manager')
+ *   'role:session,admin'        also pin the guard (session|token)
  *
  * Prefer the 'can' filter where possible: permissions survive role
  * reorganisation, role names baked into routes do not.
@@ -28,13 +30,12 @@ final class RoleFilter implements FilterInterface
      */
     public function before(RequestInterface $request, $arguments = null)
     {
-        $roles = $this->normalizeArguments($arguments);
+        $auth  = service('auth');
+        $roles = $this->pinGuard($this->normalizeArguments($arguments), $auth);
 
         if ($roles === []) {
             throw new AuthException("The 'role' filter needs at least one role, e.g. role:admin");
         }
-
-        $auth = service('auth');
 
         if (! $auth->check()) {
             return $this->unauthenticated($request, $auth);

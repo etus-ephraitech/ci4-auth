@@ -28,6 +28,13 @@ final class SyncReport
     public array $rolesPruned = [];
 
     /**
+     * Roles edited in the app (app_managed), left untouched. Not a change.
+     *
+     * @var list<string>
+     */
+    public array $rolesSkipped = [];
+
+    /**
      * Role => permissions linked and unlinked. Only roles with changes appear.
      *
      * @var array<string, array{added: list<string>, removed: list<string>}>

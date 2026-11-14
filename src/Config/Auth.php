@@ -530,6 +530,12 @@ class Auth extends BaseConfig
     // ------------------------------------------------------------------
 
     /**
+     * Merge permissions that modules declare in their own
+     * Config/AuthPermissions.php (see Ephraitech\Auth\Config\AuthPermissions).
+     */
+    public bool $discoverModulePermissions = true;
+
+    /**
      * Role that bypasses every permission check. NULL disables the bypass.
      */
     public ?string $superRole = 'superadmin';

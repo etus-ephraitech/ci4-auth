@@ -237,11 +237,15 @@ public array $matrix = [
 Check them anywhere:
 
 ```php
-if (can('visits.create')) { ... }
+if (can('visits.create')) { ... }               // signed-in user
+if (can('reports.view|reports.export')) { ... } // any of them
+if (can_user($user, 'visits.view')) { ... }     // any user: services, commands, jobs
 
 auth()->authorizer()->assignRole($user, 'admin');
 auth()->authorizer()->grantPermission($user, 'visits.create');
 ```
+
+Modules can declare their own permissions in a `Config/AuthPermissions.php`, and an admin screen can create and edit roles with `service('authRoles')` without `auth:sync` undoing it. See the [documentation](docs/README.md#12-authorization).
 
 Token abilities act as a ceiling: a key issued with `['reports.view']` can only view reports, even for an admin.
 

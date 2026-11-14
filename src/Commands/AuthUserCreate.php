@@ -6,12 +6,14 @@ namespace Ephraitech\Auth\Commands;
 
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
+use CodeIgniter\Config\Factories;
 use Ephraitech\Auth\Commands\Concerns\InteractsWithAuth;
 use Ephraitech\Auth\Config\Auth;
 use Ephraitech\Auth\Config\ConfigResolver;
 use Ephraitech\Auth\Exceptions\AuthException;
 use Ephraitech\Auth\Exceptions\InvalidIdentifierException;
 use Ephraitech\Auth\Exceptions\RegistrationException;
+use Ephraitech\Auth\Models\UserModel;
 
 class AuthUserCreate extends BaseCommand
 {
@@ -22,7 +24,7 @@ class AuthUserCreate extends BaseCommand
     protected $group       = 'Ephraitech Auth';
     protected $name        = 'auth:user:create';
     protected $description = 'Creates a user (e.g. the first superadmin). Prompts for anything not given.';
-    protected $usage       = 'auth:user:create [--email=] [--username=] [--phone=] [--role=a,b] [options]';
+    protected $usage       = 'auth:user:create [--email=] [--username=] [--phone=] [--role=a,b] [--first-name=...] [options]';
     protected $options     = [
         '--email'          => 'Email address.',
         '--username'       => 'Username.',
@@ -34,6 +36,7 @@ class AuthUserCreate extends BaseCommand
         '--verified'       => 'Mark the given identifiers as verified.',
         '--skip-policy'    => 'Skip password policy checks (trusted setups only).',
         '--no-interaction' => 'Never prompt; fail if required input is missing.',
+        '--<column>'       => 'Any user profile column from $userAllowedFields, e.g. --first-name=Jane --job-title="Director".',
     ];
 
     /**
@@ -41,9 +44,27 @@ class AuthUserCreate extends BaseCommand
      */
     public function run(array $params)
     {
-        $config      = ConfigResolver::resolve();
+        $config        = ConfigResolver::resolve();
+        $profileFields = $this->profileFields($config);
+        $unknown       = $this->unknownOptions($params, $config, $profileFields);
+
+        if ($unknown !== []) {
+            CLI::error('Unknown option(s): --' . implode(', --', $unknown) . '.');
+            CLI::write(
+                'Profile columns you can set: '
+                    . ($profileFields === [] ? '(none; add them to Config\Auth::$userAllowedFields)' : '--' . implode(', --', array_map(
+                        static fn (string $f): string => str_replace('_', '-', $f),
+                        $profileFields
+                    ))),
+                'yellow'
+            );
+
+            return EXIT_ERROR;
+        }
+
         $interactive = $this->interactive($params);
         $identifiers = $this->collectIdentifiers($params, $config, $interactive);
+        $attributes  = $this->collectAttributes($params, $config, $profileFields, $interactive);
         $generated   = false;
 
         if ($this->hasOption($params, 'generate')) {
@@ -77,7 +98,7 @@ class AuthUserCreate extends BaseCommand
             $user = service('authRegistrar')->register(
                 $identifiers,
                 $password,
-                [],
+                $attributes,
                 [
                     'roles'         => $roles ?? $config->defaultRoles,
                     'tenant'        => $this->tenantOption($params),
@@ -103,6 +124,10 @@ class AuthUserCreate extends BaseCommand
 
         CLI::write('User created: ' . $this->describeUser($user), 'green');
         CLI::write('UUID:  ' . ($user->uuid ?? '-'));
+
+        foreach ($attributes as $column => $value) {
+            CLI::write(str_pad($column . ':', 7) . ' ' . $value);
+        }
         CLI::write('Roles: ' . (implode(', ', service('authAuthorizer')->rolesFor($user, $this->tenantOption($params))) ?: '-'));
 
         if ($generated) {
@@ -138,6 +163,74 @@ class AuthUserCreate extends BaseCommand
         }
 
         return $identifiers;
+    }
+
+    /**
+     * Profile columns the user model accepts (from $userAllowedFields and
+     * a custom model's own $allowedFields).
+     *
+     * @return list<string>
+     */
+    private function profileFields(Auth $config): array
+    {
+        /** @var UserModel $users */
+        $users = Factories::models($config->userModel, ['preferApp' => false]);
+
+        return $users->profileFields();
+    }
+
+    /**
+     * Values for profile columns: given as --first-name or --first_name,
+     * or prompted for when listed in $registrationFields.
+     *
+     * @param array<int|string, string|null> $params
+     * @param list<string>                   $profileFields
+     *
+     * @return array<string, string>
+     */
+    private function collectAttributes(array $params, Auth $config, array $profileFields, bool $interactive): array
+    {
+        $options    = $this->cliOptions($params);
+        $attributes = [];
+
+        foreach ($profileFields as $column) {
+            $value = $options[$column] ?? $options[str_replace('_', '-', $column)] ?? null;
+
+            if ($value === null && $interactive && isset($config->registrationFields[$column])) {
+                $value = CLI::prompt($config->registrationFields[$column] . ' (optional)');
+            }
+
+            $value = trim((string) $value);
+
+            if ($value !== '') {
+                $attributes[$column] = $value;
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Options that are neither command options, identifiers nor profile
+     * columns, so a typo fails instead of being silently ignored.
+     *
+     * @param array<int|string, string|null> $params
+     * @param list<string>                   $profileFields
+     *
+     * @return list<string>
+     */
+    private function unknownOptions(array $params, Auth $config, array $profileFields): array
+    {
+        $known = array_map(static fn (string $o): string => ltrim($o, '-'), array_keys($this->options));
+        // spark's own global option, which CodeIgniter leaves in $params.
+        $known = array_merge($known, Auth::SUPPORTED_IDENTIFIERS, ['no-header']);
+
+        foreach ($profileFields as $column) {
+            $known[] = $column;
+            $known[] = str_replace('_', '-', $column);
+        }
+
+        return array_values(array_diff(array_keys($this->cliOptions($params)), $known));
     }
 
     private function askPassword(): ?string

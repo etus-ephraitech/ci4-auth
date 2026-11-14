@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ephraitech\Auth\Tests\Feature;
 
+use CodeIgniter\Config\Factories;
 use CodeIgniter\Test\StreamFilterTrait;
 use Ephraitech\Auth\Tests\Support\AuthTestCase;
 
@@ -52,5 +53,42 @@ final class CommandsTest extends AuthTestCase
 
         $this->assertStringContainsString('User created', $output);
         $this->seeInDatabase('auth_identities', ['identifier' => 'jane@example.com']);
+    }
+    private function addProfileColumns(): void
+    {
+        \Config\Database::forge()->addColumn('users', [
+            'first_name' => ['type' => 'VARCHAR', 'constraint' => 100, 'null' => true],
+            'job_title'  => ['type' => 'VARCHAR', 'constraint' => 100, 'null' => true],
+        ]);
+
+        $this->authConfig->userAllowedFields = ['first_name', 'job_title'];
+        Factories::reset('models');
+        $this->resetServices();
+    }
+
+    public function testUserCreateSetsProfileColumns(): void
+    {
+        $this->addProfileColumns();
+
+        $output = $this->spark(
+            'auth:user:create --email=owner@example.com --password=Correct-Horse-42 --role=superadmin'
+            . ' --first-name=Mark --job_title=Director --no-interaction --no-header'
+        );
+
+        $this->assertStringContainsString('User created', $output);
+        $this->seeInDatabase('users', ['first_name' => 'Mark', 'job_title' => 'Director']);
+    }
+
+    public function testUserCreateRejectsUnknownOptions(): void
+    {
+        $this->addProfileColumns();
+
+        $output = $this->spark(
+            'auth:user:create --email=owner@example.com --password=Correct-Horse-42 --fist-name=Mark --no-interaction'
+        );
+
+        $this->assertStringContainsString('Unknown option(s): --fist-name', $output);
+        $this->assertStringContainsString('--first-name, --job-title', $output);
+        $this->dontSeeInDatabase('auth_identities', ['identifier' => 'owner@example.com']);
     }
 }

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Ephraitech\Auth\Config;
 
+use Ephraitech\Auth\Authorization\ModulePermissions;
+use WeakMap;
+
 /**
  * Returns the auth config the host application actually defines.
  *
@@ -14,6 +17,9 @@ namespace Ephraitech\Auth\Config;
  * Every package class therefore asks this resolver instead. It returns the
  * app's Config\Auth when that class exists and extends the package config,
  * and the package defaults otherwise.
+ *
+ * The first time each config instance is resolved, permissions declared by
+ * modules (Config/AuthPermissions.php, see AuthPermissions) are merged in.
  */
 final class ConfigResolver
 {
@@ -28,6 +34,13 @@ final class ConfigResolver
     private static ?string $appClassOverride = null;
 
     /**
+     * Module contributions merged into each resolved config instance.
+     *
+     * @var WeakMap<Auth, list<array{class: string, permissions: int, roles: int, grants: int}>>|null
+     */
+    private static ?WeakMap $modules = null;
+
+    /**
      * The shared config instance: the app's Config\Auth, or the package defaults.
      */
     public static function resolve(): Auth
@@ -35,7 +48,28 @@ final class ConfigResolver
         /** @var Auth $config */
         $config = config(self::resolvedClass());
 
+        self::$modules ??= new WeakMap();
+
+        if (! isset(self::$modules[$config])) {
+            self::$modules[$config] = $config->discoverModulePermissions
+                ? ModulePermissions::apply($config, array_map(
+                    static fn (string $class): AuthPermissions => new $class(),
+                    ModulePermissions::discover()
+                ))
+                : [];
+        }
+
         return $config;
+    }
+
+    /**
+     * What each module contributed to the resolved config.
+     *
+     * @return list<array{class: string, permissions: int, roles: int, grants: int}>
+     */
+    public static function modules(): array
+    {
+        return self::$modules[self::resolve()] ?? [];
     }
 
     /**
